@@ -1,0 +1,29 @@
+{
+  "name": "quem-e-o-impostor",
+  "version": "3.0.0",
+  "private": true,
+  "description": "Quem é o Impostor? — jogo web multiplayer de dedução social (React + Socket.IO)",
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n server,client -c magenta,cyan \"npm:dev -w server\" \"npm:dev -w client\"",
+    "build": "npm run build -w client",
+    "start": "npm start -w server",
+    "test": "npm test -w server",
+    "simulate": "node scripts/simulate.mjs",
+    "visual": "npm run build && node scripts/visual-check.mjs",
+    "lint": "npm run lint -w client",
+    "check": "npm run lint && npm test && npm run build && npm run simulate",
+    "smoke": "node scripts/smoke-remote.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "playwright": "^1.56.0",
+    "socket.io-client": "^4.8.1"
+  }
+}
