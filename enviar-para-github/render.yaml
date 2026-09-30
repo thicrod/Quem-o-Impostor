@@ -1,0 +1,17 @@
+# Deploy de 1 clique no Render (Blueprint). Um único serviço web: Node + build do React.
+services:
+  - type: web
+    name: quem-e-o-impostor
+    runtime: node
+    plan: free
+    region: virginia # mais perto do Brasil entre as regiões do Render
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
+        value: "1"
