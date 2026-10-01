@@ -2,7 +2,9 @@
 
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Bot, createRoomWith, setTestEnv, sleep, startServer } from './helpers.js';
+import {
+  Bot, createRoomWith, everyone, playClueRound, setTestEnv, sleep, startAndReveal, startServer,
+} from './helpers.js';
 
 setTestEnv({ MAX_CONNECTIONS_PER_IP: '8' });
 
@@ -27,6 +29,21 @@ test('sala inativa expira e o jogador recebe "sessão expirada"', async () => {
   const res = await three[1].resume(code);
   assert.equal(res.code, 'ROOM_EXPIRED');
   assert.equal(server.manager.rooms.has(code), false, 'memória liberada');
+  three.forEach((b) => b.close());
+  await sleep(100);
+});
+
+test('discussão sem tempo com gente online não expira (estão conversando na chamada)', async () => {
+  const { bots: three, host, code } = await createRoomWith(server.url, 3, { names: ['Papo1', 'Papo2', 'Papo3'] });
+  bots.push(...three);
+  assert.equal((await host.request('settings:update', { discussionSeconds: 0 })).ok, true);
+  await startAndReveal(three);
+  await playClueRound(three);
+  await everyone(three, (b) => b.waitPhase('discussion'));
+  await sleep(1200); // 3x o tempo de expiração deste servidor (400ms)
+  assert.equal(server.manager.rooms.has(code), true, 'sala continua viva');
+  assert.equal(three[0].closed, null);
+  assert.equal((await host.request('discussion:startVoting')).ok, true);
   three.forEach((b) => b.close());
   await sleep(100);
 });

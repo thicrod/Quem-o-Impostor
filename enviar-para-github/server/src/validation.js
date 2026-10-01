@@ -28,6 +28,7 @@ export const t = {
   enumOf: (values, { optional = false } = {}) => ({ kind: 'enum', values, optional }),
   id: () => ({ kind: 'id' }),
   literalTrue: () => ({ kind: 'true' }),
+  stringList: (maxItems, maxLen, { optional = false } = {}) => ({ kind: 'stringList', maxItems, maxLen, optional }),
 };
 
 function checkField(name, rule, value) {
@@ -63,6 +64,12 @@ function checkField(name, rule, value) {
     case 'true':
       if (value !== true) throw new ValidationError(`Campo inválido: ${name}.`);
       return true;
+    case 'stringList':
+      if (!Array.isArray(value) || value.length === 0 || value.length > rule.maxItems
+        || !value.every((v) => typeof v === 'string' && v.length > 0 && v.length <= rule.maxLen)) {
+        throw new ValidationError(`Lista inválida: ${name}.`);
+      }
+      return [...new Set(value)];
     default:
       throw new ValidationError();
   }

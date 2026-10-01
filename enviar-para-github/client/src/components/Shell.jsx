@@ -6,27 +6,29 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useGame, useRoom } from '../hooks/useGame.jsx';
 import { isSoundEnabled, onSoundChange, playSound, setSoundEnabled } from '../lib/sound.js';
 import { Button, Chip, IconButton, Spinner, cx } from './ui.jsx';
+import { SettingsButton } from './SettingsSheet.jsx';
+import { ImpostorHint } from './ImpostorHint.jsx';
 
 export function Logo({ size = 'md' }) {
   const s = size === 'lg' ? 92 : size === 'sm' ? 36 : 56;
   return (
-    <svg width={s} height={s} viewBox="0 0 64 64" aria-hidden="true" className="drop-shadow-[0_10px_25px_rgba(255,61,139,0.45)]">
+    <svg width={s} height={s} viewBox="0 0 64 64" aria-hidden="true" className="drop-shadow-[0_10px_25px_color-mix(in_srgb,var(--color-hot-500)_45%,transparent)]">
       <defs>
         <linearGradient id="logo-g" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#ff6fb5" />
-          <stop offset="0.55" stopColor="#ff3d8b" />
-          <stop offset="1" stopColor="#8b5cf6" />
+          <stop offset="0" style={{ stopColor: 'var(--color-hot-400)' }} />
+          <stop offset="0.55" style={{ stopColor: 'var(--color-hot-500)' }} />
+          <stop offset="1" style={{ stopColor: 'var(--color-grape-500)' }} />
         </linearGradient>
       </defs>
       <path
         d="M4 26c0-6 6-10 13-10 6 0 11 3 15 6 4-3 9-6 15-6 7 0 13 4 13 10 0 12-8 21-17 21-5 0-8-2-11-6-3 4-6 6-11 6C12 47 4 38 4 26z"
         fill="url(#logo-g)"
       />
-      <ellipse cx="20" cy="30" rx="6.5" ry="4.8" fill="#0d0927" />
-      <ellipse cx="44" cy="30" rx="6.5" ry="4.8" fill="#0d0927" />
-      <circle cx="22" cy="29.5" r="2" fill="#3ee0ff" />
-      <circle cx="46" cy="29.5" r="2" fill="#3ee0ff" />
-      <path d="M26 41q6 3 12 0" stroke="#0d0927" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+      <ellipse cx="20" cy="30" rx="6.5" ry="4.8" style={{ fill: 'var(--color-ink-900)' }} />
+      <ellipse cx="44" cy="30" rx="6.5" ry="4.8" style={{ fill: 'var(--color-ink-900)' }} />
+      <circle cx="22" cy="29.5" r="2" style={{ fill: 'var(--color-sky-400)' }} />
+      <circle cx="46" cy="29.5" r="2" style={{ fill: 'var(--color-sky-400)' }} />
+      <path d="M26 41q6 3 12 0" strokeWidth="2.5" fill="none" strokeLinecap="round" style={{ stroke: 'var(--color-ink-900)' }} />
     </svg>
   );
 }
@@ -49,7 +51,7 @@ export function SoundToggle({ className }) {
   );
 }
 
-export function Modal({ open, onClose, title, children, actions }) {
+export function Modal({ open, onClose, title, children, actions, wide = false }) {
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (e) => e.key === 'Escape' && onClose?.();
@@ -70,7 +72,7 @@ export function Modal({ open, onClose, title, children, actions }) {
             role="dialog"
             aria-modal="true"
             aria-label={title}
-            className="glass-strong w-full max-w-sm rounded-3xl p-5 safe-bottom"
+            className={cx('glass-strong max-h-[92dvh] w-full overflow-y-auto rounded-3xl p-5 safe-bottom', wide ? 'max-w-lg' : 'max-w-sm')}
             initial={{ y: 40, scale: 0.96 }}
             animate={{ y: 0, scale: 1 }}
             exit={{ y: 40, scale: 0.96 }}
@@ -109,11 +111,11 @@ export function MyCardPeek() {
           <p className={cx('font-display text-xl', impostor ? 'text-bad-400' : 'text-good-400')}>
             {impostor ? '🔴 IMPOSTOR' : '🟢 INOCENTE'}
           </p>
-          {card.word ? (
-            <p className="mt-1 font-display text-3xl break-words text-white">{card.word}</p>
-          ) : (
-            <p className="mt-1 text-ink-200">Você não tem palavra. Blefe!</p>
-          )}
+          {card.word && <p className="mt-1 font-display text-3xl break-words text-white">{card.word}</p>}
+          {impostor && <ImpostorHint card={card} className="mt-2" />}
+          <p className="mt-2 text-xs font-bold text-ink-300">
+            {room.game.category.emoji} {room.game.category.label}
+          </p>
         </div>
       </Modal>
     </>
@@ -126,6 +128,8 @@ export function TopBar() {
   const [confirmLeave, setConfirmLeave] = useState(false);
   if (!room) return null;
   const category = room.game?.category;
+  const midRound = Boolean(room.game) && room.phase !== 'result' && room.phase !== 'lobby';
+  const hostMidRound = midRound && room.you.isHost;
   return (
     <header className="safe-top sticky top-0 z-30 -mx-4 mb-2 bg-gradient-to-b from-ink-950/95 via-ink-950/80 to-transparent px-4 pb-3">
       <div className="flex items-center gap-2">
@@ -135,13 +139,13 @@ export function TopBar() {
           {room.code}
         </Chip>
         {category && room.phase !== 'lobby' && (
-          <Chip tone="grape" className="min-w-0 truncate normal-case" title="Categoria da rodada">
+          <Chip tone={room.game.categoryHidden ? 'sun' : 'grape'} className="min-w-0 truncate normal-case" title="Categoria da rodada">
             <span aria-hidden="true">{category.emoji}</span> {category.label}
           </Chip>
         )}
         <div className="ml-auto flex items-center gap-2">
           <MyCardPeek />
-          <SoundToggle />
+          <SettingsButton />
           <IconButton label="Sair da sala" onClick={() => setConfirmLeave(true)}>
             <span aria-hidden="true">🚪</span>
           </IconButton>
@@ -150,9 +154,22 @@ export function TopBar() {
       <Modal
         open={confirmLeave}
         onClose={() => setConfirmLeave(false)}
-        title="Sair da sala?"
+        title={hostMidRound ? 'Encerrar ou sair?' : 'Sair da sala?'}
         actions={(
           <>
+            {hostMidRound && (
+              <Button
+                variant="secondary"
+                size="md"
+                onClick={async () => {
+                  setConfirmLeave(false);
+                  const res = await actions.endRound();
+                  if (!res.ok) actions.toast(res.message, 'error');
+                }}
+              >
+                ⏹️ Encerrar rodada
+              </Button>
+            )}
             <Button variant="danger" size="md" onClick={() => { setConfirmLeave(false); actions.leaveRoom(); }}>
               Sair da sala
             </Button>
@@ -160,9 +177,11 @@ export function TopBar() {
           </>
         )}
       >
-        {room.game && room.phase !== 'result'
-          ? 'A rodada está em andamento. Se você sair, perde seu lugar e seus pontos nesta sala.'
-          : 'Você perde seu lugar e seus pontos nesta sala.'}
+        {hostMidRound
+          ? 'Encerrar rodada: todos voltam ao lobby, sem pontos. Sair da sala: você perde seu lugar e seus pontos.'
+          : midRound
+            ? 'A rodada está em andamento. Se você sair, perde seu lugar e seus pontos nesta sala.'
+            : 'Você perde seu lugar e seus pontos nesta sala.'}
       </Modal>
     </header>
   );

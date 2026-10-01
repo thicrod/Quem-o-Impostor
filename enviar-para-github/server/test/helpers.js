@@ -48,6 +48,7 @@ export class Bot {
     this.socket = ioClient(this.url, { transports: ['websocket'], forceNew: true, reconnection: false });
     this.socket.onAny((event, payload) => {
       this.received.push({ event, payload, phase: this.state?.phase });
+      queueMicrotask(() => this.flush()); // eventos sem handler próprio (ex.: reações) também liberam esperas
     });
     this.socket.on('server:meta', (m) => { this.meta = m; });
     this.socket.on('room:state', (s) => {
@@ -200,7 +201,8 @@ export async function playClueRound(bots, { skip = new Set(), clueFor } = {}) {
     const bot = byId()[turnId];
     const turnIndex = host.state.game.turnIndex;
     if (bot && !skip.has(bot.nickname)) {
-      const text = clueFor ? clueFor(bot, round) : `dica${round}x${bot.nickname.toLowerCase()}`;
+      const pass = host.state.game.pass ?? round;
+      const text = clueFor ? clueFor(bot, round) : `dica${pass}x${bot.nickname.toLowerCase()}`;
       const res = await bot.request('clue:submit', { text });
       if (!res.ok) throw new Error(`pista recusada (${bot.nickname}): ${res.message}`);
     }
@@ -218,13 +220,19 @@ export async function finishDiscussion(bots) {
   await bots[0].waitPhase('voting');
 }
 
-/** Vota conforme `plan` (nickname -> nickname alvo). `pool` = onde procurar os alvos. */
+/** Alvo especial para `vote()`: o jogador pula o voto. */
+export const SKIP = Symbol('pular');
+
+/** Vota conforme `plan` (nickname -> nickname alvo ou SKIP). `pool` = onde procurar os alvos. */
 export async function vote(bots, plan, pool = bots) {
   await everyone(bots, (b) => b.waitPhase('voting'));
   const byNick = Object.fromEntries([...pool, ...bots].map((b) => [b.nickname, b]));
-  for (const [voter, target] of Object.entries(plan)) {
-    const res = await byNick[voter].request('vote:cast', { targetId: byNick[target].id });
-    if (!res.ok) throw new Error(`voto recusado (${voter}->${target}): ${res.message}`);
+  for (const voter of Reflect.ownKeys(plan)) {
+    const target = plan[voter];
+    const res = target === SKIP
+      ? await byNick[voter].request('vote:skip')
+      : await byNick[voter].request('vote:cast', { targetId: byNick[target].id });
+    if (!res.ok) throw new Error(`voto recusado (${voter}->${String(target)}): ${res.message}`);
   }
 }
 

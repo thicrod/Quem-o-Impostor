@@ -2,7 +2,13 @@ import { useEffect, useRef } from 'react';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { RoomScope, useGame, useRoom } from './hooks/useGame.jsx';
 import { playSound } from './lib/sound.js';
+import { setMusicMood } from './lib/music.js';
+import { useWakeLock } from './hooks/useWakeLock.js';
 import { ConnectionOverlay, LiveAnnouncer, Logo, Toasts, TopBar } from './components/Shell.jsx';
+import { SettingsSheet } from './components/SettingsSheet.jsx';
+import { ServerWaking, useSecondsWhile } from './components/ServerWaking.jsx';
+import { ReactionLayer } from './components/Reactions.jsx';
+import { Onboarding } from './components/Onboarding.jsx';
 import { Spinner } from './components/ui.jsx';
 import HomeScreen from './screens/HomeScreen.jsx';
 import LobbyScreen from './screens/LobbyScreen.jsx';
@@ -34,7 +40,7 @@ const PHASE_ANNOUNCE = {
   discussion: 'Discussão aberta.',
   voting: 'Hora de votar: quem é o impostor?',
   voteReveal: 'Revelando os votos.',
-  tie: 'Empate!',
+  tie: 'Ninguém saiu. Mais uma rodada!',
   lastChance: 'Última chance do impostor.',
   result: 'Resultado da rodada.',
 };
@@ -44,11 +50,21 @@ const FULL_HEIGHT = new Set(['discussion']);
 const WIDE = new Set(['lobby', 'result', 'voting', 'voteReveal']);
 
 function Splash() {
+  const { state, actions } = useGame();
+  const waiting = useSecondsWhile(state.connection !== 'online');
   return (
-    <div className="relative z-10 flex min-h-dvh flex-col items-center justify-center gap-4" role="status">
+    <div className="relative z-10 flex min-h-dvh flex-col items-center justify-center gap-4 px-4" role="status">
       <div className="animate-float"><Logo size="lg" /></div>
       <Spinner className="size-8 text-hot-400" />
       <p className="text-sm font-bold text-ink-300">Carregando…</p>
+      {waiting >= 4 && (
+        <ServerWaking
+          className="w-full max-w-sm"
+          seconds={waiting}
+          offline={state.connection === 'offline'}
+          onRetry={actions.reconnectNow}
+        />
+      )}
     </div>
   );
 }
@@ -71,6 +87,19 @@ function useRoomSounds(room) {
   }, [room]);
 }
 
+// Clima da música de fundo (se ligada nos ajustes) para cada fase.
+const MUSIC_MOOD = {
+  lobby: 'calm',
+  reveal: 'tension',
+  clues: 'tension',
+  discussion: 'tension',
+  voting: 'tension',
+  voteReveal: 'suspense',
+  tie: 'suspense',
+  lastChance: 'suspense',
+  result: 'calm',
+};
+
 /** Texto para a região aria-live (leitores de tela). */
 function announcementFor(room) {
   if (!room) return '';
@@ -87,6 +116,12 @@ export default function App() {
   const room = useRoom();
   useRoomSounds(room);
   const announce = announcementFor(room);
+  const phase = room?.phase ?? null;
+  // Tela sempre acesa enquanto estiver numa sala (o celular não apaga no meio da rodada).
+  useWakeLock(Boolean(room));
+  useEffect(() => {
+    setMusicMood(phase ? MUSIC_MOOD[phase] ?? 'calm' : 'calm');
+  }, [phase]);
 
   let content;
   let key;
@@ -114,14 +149,16 @@ export default function App() {
           ].join(' ')}
         >
           <TopBar />
-          <AnimatePresence mode="wait">
+          {/* popLayout: a tela nova entra na hora, sem esperar a antiga sair
+              (antes, com "wait", a troca podia travar com a aba em segundo plano). */}
+          <AnimatePresence mode="popLayout" initial={false}>
             <motion.main
               key={`${room.phase}-${room.game?.number ?? 0}`}
               className={['flex flex-col', full ? 'min-h-0 flex-1' : 'flex-1'].join(' ')}
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.22, ease: 'easeOut' }}
+              initial={{ opacity: 0, y: 16, scale: 0.985 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.97, transition: { duration: 0.14, ease: 'easeIn' } }}
+              transition={{ type: 'spring', stiffness: 420, damping: 36, mass: 0.8 }}
             >
               {/* Cada tela recebe a "sua" sala congelada (ver RoomScope). */}
               <RoomScope room={state.room}>
@@ -137,12 +174,23 @@ export default function App() {
   return (
     <MotionConfig reducedMotion="user">
       <div className="app-bg" aria-hidden="true" />
-      <AnimatePresence mode="wait">
-        <motion.div key={key} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
-          {content}
-        </motion.div>
-      </AnimatePresence>
+      <div className="relative">
+        <AnimatePresence mode="popLayout" initial={false}>
+          <motion.div
+            key={key}
+            initial={{ opacity: 0, scale: 1.02 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.14 } }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+          >
+            {content}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+      <ReactionLayer />
       <Toasts />
+      <SettingsSheet />
+      <Onboarding />
       <ConnectionOverlay />
       <LiveAnnouncer message={announce} />
     </MotionConfig>

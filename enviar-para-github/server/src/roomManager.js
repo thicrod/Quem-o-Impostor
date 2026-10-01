@@ -91,6 +91,12 @@ export class RoomManager {
 
   sweep(now = Date.now()) {
     for (const [code, room] of this.rooms) {
+      // Discussão sem limite de tempo com gente online (conversando na chamada)
+      // não conta como inatividade.
+      if (room.isOpenDiscussion?.()) {
+        room.touch();
+        continue;
+      }
       if (now - room.lastActivity > this.ttlMs) this.remove(code, 'expired');
     }
     for (const [code, at] of this.expired) {

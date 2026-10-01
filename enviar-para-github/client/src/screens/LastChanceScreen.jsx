@@ -5,6 +5,7 @@ import { playSound, vibrate } from '../lib/sound.js';
 import { Avatar, Button, Panel } from '../components/ui.jsx';
 import { TimerRing } from '../components/Timer.jsx';
 import { ClueList } from '../components/ClueList.jsx';
+import { ReactionBar } from '../components/Reactions.jsx';
 
 export default function LastChanceScreen() {
   const room = useRoom();
@@ -97,6 +98,7 @@ export default function LastChanceScreen() {
         <div className="text-center" role="status">
           <p className="shimmer-text font-display text-2xl">O impostor está pensando…</p>
           <p className="mt-1 text-sm text-ink-300">Se ele acertar a palavra, rouba a vitória!</p>
+          <ReactionBar className="mt-4" />
         </div>
       )}
 

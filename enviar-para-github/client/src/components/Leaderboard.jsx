@@ -30,6 +30,8 @@ const STAT_LABELS = [
   ['impostorsFound', 'Impostores descobertos', '🕵️'],
   ['escapes', 'Fugas como impostor', '💨'],
   ['steals', 'Vitórias roubadas', '🦹'],
+  ['framed', 'Eliminado sendo inocente', '🐑'],
+  ['matchesWon', 'Partidas vencidas', '👑'],
 ];
 
 /**
@@ -115,7 +117,7 @@ export function Leaderboard({ players, meId, gained = null, title = 'Placar', co
                     {STAT_LABELS.map(([key, label, icon]) => (
                       <div key={key} className="rounded-xl bg-ink-950/50 px-2.5 py-2">
                         <dt className="text-[11px] font-bold text-ink-300 uppercase">{icon} {label}</dt>
-                        <dd className="font-display text-xl text-white">{key === 'score' ? p.score : p.stats[key]}</dd>
+                        <dd className="font-display text-xl text-white">{key === 'score' ? p.score : p.stats[key] ?? 0}</dd>
                       </div>
                     ))}
                   </motion.dl>

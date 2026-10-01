@@ -1,14 +1,18 @@
 // Revelação dramática + resultado da rodada + placar.
 // Sequência: "O IMPOSTOR ERA..." (suspense) -> nome do impostor -> vitória/derrota -> pontos.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useGame, useRoom } from '../hooks/useGame.jsx';
-import { playSound } from '../lib/sound.js';
+import { playSound, vibrate } from '../lib/sound.js';
+import { shareResultImage } from '../lib/shareImage.js';
 import { Avatar, Button, Chip, Panel, cx } from '../components/ui.jsx';
 import { Leaderboard, CountUp } from '../components/Leaderboard.jsx';
 import { ClueList } from '../components/ClueList.jsx';
 import { Confetti } from '../components/Confetti.jsx';
+import { ReactionBar } from '../components/Reactions.jsx';
+import { VoteRecap } from '../components/VoteRecap.jsx';
+import { Awards } from '../components/Awards.jsx';
 
 const OUTCOMES = {
   caught: { title: '🟢 O GRUPO VENCEU!', tone: 'good', sub: 'O impostor foi descoberto.' },
@@ -42,6 +46,93 @@ function Suspense({ ids, playerInfo }) {
   );
 }
 
+/** Tela cheia rápida de VITÓRIA/DERROTA (toque para pular). */
+function OutcomeSplash({ show, win, champion, text, onDone }) {
+  useEffect(() => {
+    if (!show) return undefined;
+    vibrate(win ? [40, 60, 40, 60, 120] : [200]);
+    const t = setTimeout(onDone, 2200);
+    return () => clearTimeout(t);
+  }, [show, win, onDone]);
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.button
+          type="button"
+          aria-label="Continuar"
+          onClick={onDone}
+          className="fixed inset-0 z-40 grid cursor-pointer place-items-center overflow-hidden bg-ink-950/85 backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0, transition: { duration: 0.25 } }}
+        >
+          {win ? (
+            <div className="rays absolute top-1/2 left-1/2 size-[170vmax] -translate-x-1/2 -translate-y-1/2" aria-hidden="true" />
+          ) : (
+            <div
+              className="absolute inset-0"
+              style={{ background: 'radial-gradient(circle, transparent 25%, color-mix(in srgb, var(--color-bad-500) 40%, transparent))' }}
+              aria-hidden="true"
+            />
+          )}
+          <motion.div
+            className="relative flex flex-col items-center px-6 text-center"
+            initial={{ scale: 0.2, rotate: win ? -12 : 0 }}
+            animate={win ? { scale: 1, rotate: 0 } : { scale: 1, x: [0, -16, 16, -10, 10, -4, 0] }}
+            transition={win ? { type: 'spring', stiffness: 260, damping: 11 } : { duration: 0.6 }}
+          >
+            <motion.span
+              className="text-[7rem] leading-none"
+              animate={win ? { y: [0, -14, 0] } : { rotate: [0, -8, 8, 0] }}
+              transition={{ repeat: Infinity, duration: win ? 1.1 : 1.6 }}
+              aria-hidden="true"
+            >
+              {champion ? '👑' : win ? '🏆' : '💀'}
+            </motion.span>
+            <p
+              className={cx('mt-2 font-display text-[3.6rem] leading-none text-outline', win ? 'text-sun-400' : 'text-bad-400')}
+            >
+              {champion ? 'CAMPEÃO!' : win ? 'VITÓRIA!' : 'DERROTA'}
+            </p>
+            <p className="mt-3 max-w-xs font-display text-xl text-white">{text}</p>
+            <p className="mt-6 text-xs font-bold text-ink-300">toque para continuar</p>
+          </motion.div>
+        </motion.button>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/** Fim de partida (pontuação-alvo atingida). */
+function ChampionBanner({ champions, target, meId }) {
+  return (
+    <motion.div
+      initial={{ scale: 0.8, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ type: 'spring', stiffness: 220, damping: 14 }}
+      className="relative overflow-hidden rounded-3xl border-2 border-sun-400/80 bg-sun-400/10 px-4 py-5 text-center"
+      role="status"
+    >
+      <div className="rays absolute top-1/2 left-1/2 size-[600px] -translate-x-1/2 -translate-y-1/2 opacity-70" aria-hidden="true" />
+      <div className="relative">
+        <p className="text-xs font-extrabold tracking-[0.25em] text-sun-400 uppercase">🏁 Fim de partida · {target} pontos</p>
+        <p className="mt-1 font-display text-4xl text-white text-outline">
+          {champions.length > 1 ? '👑 CAMPEÕES' : '👑 CAMPEÃO'}
+        </p>
+        <div className="mt-3 flex flex-wrap justify-center gap-4">
+          {champions.map((p) => (
+            <div key={p.id} className="flex flex-col items-center gap-1">
+              <Avatar player={p} size="lg" className="ring-4 ring-sun-400" />
+              <span className="font-display text-xl text-sun-400">{p.id === meId ? 'VOCÊ' : p.nickname}</span>
+            </div>
+          ))}
+        </div>
+        <p className="mt-2 text-sm text-ink-200">O placar zera na próxima partida.</p>
+      </div>
+    </motion.div>
+  );
+}
+
 export default function ResultScreen() {
   const room = useRoom();
   const { actions } = useGame();
@@ -49,6 +140,9 @@ export default function ResultScreen() {
   const result = game.result;
   const [stage, setStage] = useState(0); // 0 suspense, 1 revelado, 2 detalhes
   const [busy, setBusy] = useState(null);
+  const [skipped, setSkipped] = useState(false);
+  const [splashDone, setSplashDone] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   const impostors = result.impostorIds.map(playerInfo).filter(Boolean);
   const outcome = OUTCOMES[result.outcome];
@@ -56,11 +150,24 @@ export default function ResultScreen() {
   const participated = game.participants.includes(you.id) || result.pointsDelta[you.id] !== undefined;
   const iWon = participated && (result.winner === 'impostors') === iWasImpostor;
   const eliminated = playerInfo(result.eliminatedId);
+  const champions = (result.champions || []).map(playerInfo).filter(Boolean);
+  const iAmChampion = champions.some((p) => p.id === you.id);
+  const showSplash = stage === 2 && participated && !skipped && !splashDone;
+  const endSplash = useCallback(() => setSplashDone(true), []);
+
+  const share = async () => {
+    setSharing(true);
+    try {
+      const r = await shareResultImage({ result, game, players: room.players, playerInfo });
+      if (r === 'downloaded') actions.toast('Imagem salva! Mande no grupo. 📸', 'join');
+    } catch {
+      actions.toast('Não deu para gerar a imagem.', 'error');
+    }
+    setSharing(false);
+  };
 
   const escapedReason = result.outcome === 'escaped'
-    ? result.reason === 'tie'
-      ? 'Três empates seguidos: o grupo não chegou a um consenso.'
-      : `Vocês eliminaram ${eliminated?.nickname ?? 'um inocente'}, que era inocente.`
+    ? `Vocês eliminaram ${eliminated?.nickname ?? 'um inocente'}, que era inocente.`
     : outcome.sub;
 
   const suspenseIds = useMemo(() => {
@@ -98,11 +205,18 @@ export default function ResultScreen() {
 
   return (
     <div className="grid gap-4 pb-40">
-      <Confetti fire={stage === 2 && iWon} />
+      <Confetti fire={stage === 2 && (iWon || iAmChampion) && !showSplash} />
+      <OutcomeSplash
+        show={showSplash}
+        win={iWon || iAmChampion}
+        champion={iAmChampion}
+        text={outcome.title.replace(/^\S+\s/, '')}
+        onDone={endSplash}
+      />
       {stage < 2 && (
         <button
           type="button"
-          onClick={() => setStage(2)}
+          onClick={() => { setSkipped(true); setStage(2); }}
           className="min-h-11 justify-self-end rounded-full px-4 text-sm font-bold text-ink-300 hover:text-white"
         >
           Pular animação ›
@@ -163,7 +277,21 @@ export default function ResultScreen() {
                 </Chip>
               </motion.div>
             )}
+            <button
+              type="button"
+              onClick={share}
+              disabled={sharing}
+              className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-white/20 bg-white/8 px-4 text-sm font-extrabold text-white transition-colors hover:bg-white/15 disabled:opacity-50"
+            >
+              <span aria-hidden="true">📸</span> {sharing ? 'Gerando…' : 'Compartilhar resultado'}
+            </button>
           </div>
+
+          <ReactionBar />
+
+          {result.matchOver && champions.length > 0 && (
+            <ChampionBanner champions={champions} target={result.targetScore} meId={you.id} />
+          )}
 
           <Panel className="text-center">
             <p className="text-xs font-extrabold tracking-[0.25em] text-ink-300 uppercase">A palavra era</p>
@@ -212,6 +340,17 @@ export default function ResultScreen() {
 
           <Panel>
             <Leaderboard players={room.players} meId={you.id} gained={result.pointsDelta} title="Placar total" delay={0.2} />
+            {!result.matchOver && result.targetScore > 0 && (
+              <p className="mt-3 text-center text-sm font-bold text-sun-400">🏁 Partida até {result.targetScore} pontos</p>
+            )}
+          </Panel>
+
+          <Panel>
+            <Awards players={room.players} meId={you.id} />
+          </Panel>
+
+          <Panel>
+            <VoteRecap game={game} playerInfo={playerInfo} meId={you.id} />
           </Panel>
 
           <Panel>
@@ -226,7 +365,7 @@ export default function ResultScreen() {
           <div className="mx-auto grid max-w-md gap-2">
             {you.isHost ? (
               <Button size="xl" block onClick={() => act('again')} loading={busy === 'again'} disabled={Boolean(busy)}>
-                🔁 Jogar novamente
+                {result.matchOver ? '🏁 Nova partida' : '🔁 Jogar novamente'}
               </Button>
             ) : (
               <div className="glass rounded-2xl px-4 py-3 text-center" role="status">

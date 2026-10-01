@@ -8,8 +8,9 @@
 //
 // Variáveis: CHROMIUM_PATH (executável do Chromium), SHOTS_DIR (pasta de saída).
 
-import { mkdirSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, existsSync, readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { extname, join } from 'node:path';
 import { chromium } from 'playwright';
 
 process.env.LOG_LEVEL ??= 'warn';
@@ -19,13 +20,14 @@ const { createGameServer, listen } = await import('../server/src/app.js');
 const OUT = process.env.SHOTS_DIR || join(process.cwd(), 'screenshots');
 mkdirSync(OUT, { recursive: true });
 
+// Cada aparelho usa um tema diferente, para conferir todos os temas em todas as telas.
 const DEVICES = [
-  { key: 'iphone-se', name: 'João', viewport: { width: 375, height: 667 }, mobile: true, scale: 2 },
-  { key: 'iphone-pro-max', name: 'Pedro', viewport: { width: 430, height: 932 }, mobile: true, scale: 3 },
-  { key: 'android', name: 'Lucas', viewport: { width: 412, height: 915 }, mobile: true, scale: 2.6 },
-  { key: 'tablet', name: 'Thiago', viewport: { width: 820, height: 1180 }, mobile: true, scale: 2 },
-  { key: 'desktop', name: 'Maria', viewport: { width: 1440, height: 900 }, mobile: false, scale: 1 },
-  { key: 'android-small', name: 'Ana Clara', viewport: { width: 360, height: 740 }, mobile: true, scale: 2 },
+  { key: 'iphone-se', name: 'João', viewport: { width: 375, height: 667 }, mobile: true, scale: 2, theme: 'neon', tutorial: true },
+  { key: 'iphone-pro-max', name: 'Pedro', viewport: { width: 430, height: 932 }, mobile: true, scale: 3, theme: 'sunset' },
+  { key: 'android', name: 'Lucas', viewport: { width: 412, height: 915 }, mobile: true, scale: 2.6, theme: 'ocean' },
+  { key: 'tablet', name: 'Thiago', viewport: { width: 820, height: 1180 }, mobile: true, scale: 2, theme: 'galaxy' },
+  { key: 'desktop', name: 'Maria', viewport: { width: 1440, height: 900 }, mobile: false, scale: 1, theme: 'hacker' },
+  { key: 'android-small', name: 'Ana Clara', viewport: { width: 360, height: 740 }, mobile: true, scale: 2, theme: 'vampire' },
 ];
 
 const problems = [];
@@ -74,6 +76,11 @@ async function openPlayer(browser, device, url) {
     locale: 'pt-BR',
     reducedMotion: 'no-preference',
   });
+  // Preferências salvas antes de abrir (tema do aparelho; tutorial só para quem tem tutorial: true).
+  const prefs = { theme: device.theme || 'neon', onboarded: !device.tutorial };
+  await context.addInitScript((value) => {
+    if (!localStorage.getItem('impostor:prefs')) localStorage.setItem('impostor:prefs', value);
+  }, JSON.stringify(prefs));
   const page = await context.newPage();
   const p = { device, context, page, logs: [] };
   page.on('console', (msg) => {
@@ -90,6 +97,25 @@ async function waitText(p, text, timeout = 15000) {
   await p.page.getByText(text, { exact: false }).first().waitFor({ timeout });
 }
 
+/** Serve só o front (dist) — o Socket.IO não responde, como um servidor acordando. */
+function staticOnlyServer() {
+  const dist = join(process.cwd(), 'client/dist');
+  const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.webmanifest': 'application/manifest+json' };
+  const srv = createServer((req, res) => {
+    const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    if (path.startsWith('/socket.io')) {
+      res.writeHead(503);
+      res.end();
+      return;
+    }
+    const file = join(dist, path === '/' ? 'index.html' : path);
+    const target = file.startsWith(dist) && existsSync(file) && extname(file) ? file : join(dist, 'index.html');
+    res.writeHead(200, { 'Content-Type': types[extname(target)] || 'application/octet-stream' });
+    res.end(readFileSync(target));
+  });
+  return new Promise((resolve) => srv.listen(0, '127.0.0.1', () => resolve(srv)));
+}
+
 async function main() {
   const server = createGameServer();
   const port = await listen(server, 0);
@@ -97,9 +123,36 @@ async function main() {
   const browser = await chromium.launch({ executablePath: executablePath() });
   const players = [];
   try {
+    // ── Servidor "dormindo" (plano grátis): aviso amigável enquanto acorda ──
+    const sleepy = await staticOnlyServer();
+    const napper = await openPlayer(browser, { ...DEVICES[0], tutorial: false }, `http://127.0.0.1:${sleepy.address().port}`);
+    await waitText(napper, 'Acordando o servidor', 15000);
+    await sleep(1500);
+    await shot(napper, '00-servidor-acordando');
+    await napper.context.close();
+    sleepy.close();
+
     // ── Home + criar sala ──
     const host = await openPlayer(browser, DEVICES[0], url);
     players.push(host);
+    // Tutorial da primeira visita
+    await host.page.getByRole('dialog', { name: 'Como jogar' }).waitFor();
+    await sleep(600);
+    await shot(host, '00a-tutorial');
+    for (let i = 0; i < 4; i += 1) {
+      await byName(host.page, 'button', /próximo/i).click();
+      await sleep(350);
+    }
+    await shot(host, '00b-tutorial-fim');
+    await byName(host.page, 'button', /bora jogar/i).click();
+    await host.page.getByRole('dialog', { name: 'Como jogar' }).waitFor({ state: 'detached' });
+    // Ajustes (tema, som, música, instalar)
+    await byName(host.page, 'button', 'Ajustes').click();
+    await host.page.getByRole('dialog', { name: 'Ajustes' }).waitFor();
+    await sleep(500);
+    await shot(host, '00c-ajustes');
+    await byName(host.page, 'button', 'Fechar ajustes').click();
+    await host.page.getByRole('dialog', { name: 'Ajustes' }).waitFor({ state: 'detached' });
     await waitText(host, 'IMPOSTOR?');
     await host.page.getByRole('button', { name: /criar sala/i }).waitFor();
     await sleep(700);
@@ -125,7 +178,29 @@ async function main() {
     await stranger.page.getByLabel('Código da sala').fill('AB0');
     await waitText(stranger, 'Códigos usam só letras');
     await shot(stranger, '05-entrar-codigo-invalido');
+    // entra na sala de verdade… e o host remove
+    await stranger.page.getByLabel('Código da sala').fill(code);
+    await byName(stranger.page, 'button', /^entrar$/i).click();
+    await waitText(stranger, 'Configurações');
+    await waitText(host, 'Visitante');
+    await byName(host.page, 'button', 'Opções de Visitante').click();
+    await host.page.getByRole('dialog').waitFor();
+    await sleep(400);
+    await shot(host, '05b-host-opcoes-jogador');
+    await byName(host.page, 'button', /remover da sala/i).click();
+    await waitText(host, 'não consegue entrar de novo');
+    await byName(host.page, 'button', /remover da sala/i).click();
+    await waitText(stranger, 'Você foi removido');
+    await sleep(500);
+    await shot(stranger, '05c-removido-pelo-host');
     await stranger.context.close();
+    // QR code do convite
+    await byName(host.page, 'button', 'Mostrar QR code da sala').click();
+    await host.page.getByRole('img', { name: 'QR code para entrar na sala' }).waitFor();
+    await sleep(400);
+    await shot(host, '05d-qr-code');
+    await byName(host.page, 'button', 'Fechar').click();
+    await host.page.getByRole('dialog').waitFor({ state: 'detached' });
 
     // ── Outros jogadores entram pelo link de convite ──
     for (const device of DEVICES.slice(1)) {
@@ -148,13 +223,31 @@ async function main() {
     await sleep(800);
     for (const p of players) await shot(p, '08-lobby', { fullPage: true });
 
+    // ── Host passa a coroa para o Pedro, que devolve ──
+    await byName(host.page, 'button', 'Opções de Pedro').click();
+    await byName(host.page, 'button', /passar o host/i).click();
+    await waitText(players[0], 'Pedro agora é o host');
+    await waitText(players[1], 'Iniciar partida');
+    await sleep(400);
+    await shot(players[1], '08b-pedro-virou-host');
+    await byName(players[1].page, 'button', 'Opções de João').click();
+    await byName(players[1].page, 'button', /passar o host/i).click();
+    await waitText(host, 'Iniciar partida');
+    // reação no lobby
+    await byName(players[2].page, 'button', 'Reagir com 👏').click();
+    await byName(players[3].page, 'button', 'Reagir com 😂').click();
+
     // ── Host muda configurações ──
-    await host.page.getByRole('button', { name: /categoria:/i }).click();
-    await waitText(host, 'Escolha a categoria');
+    await host.page.getByRole('button', { name: /categorias:/i }).click();
+    await waitText(host, 'Escolha as categorias');
+    await byName(host.page, 'button', 'Limpar').click();
+    await host.page.getByRole('checkbox', { name: /comida/i }).click();
+    await host.page.getByRole('checkbox', { name: /animais/i }).click();
     await sleep(400);
     await shot(host, '09-lobby-categorias');
-    await host.page.getByRole('button', { name: /comida/i }).click();
+    await byName(host.page, 'button', /salvar \(2\)/i).click();
     await host.page.getByRole('radio', { name: /palavra parecida/i }).click();
+    await host.page.getByRole('radio', { name: /chat no app/i }).click();
     await sleep(500);
     await shot(players[4], '10-lobby-config-desktop');
 
@@ -165,7 +258,7 @@ async function main() {
     await shot(host, '11-carta-fechada');
     let impostor = null;
     for (const p of players) {
-      const isImpostor = (await p.page.getByText('VOCÊ É O IMPOSTOR').count()) > 0;
+      const isImpostor = (await p.page.getByTestId('card-face').getAttribute('data-role')) === 'impostor';
       p.impostor = isImpostor;
       if (isImpostor) impostor = p;
       p.word = isImpostor ? null : (await p.page.getByTestId('card-word').textContent()).trim();
@@ -295,61 +388,147 @@ async function main() {
     await sleep(2200);
     await shot(host, '32-resultado-revelacao');
     await waitText(host, 'Placar total', 8000);
-    await sleep(1800);
+    await sleep(300);
+    await innocent.page.getByRole('button', { name: 'Continuar' }).waitFor({ timeout: 4000 });
+    await impostor.page.getByRole('button', { name: 'Continuar' }).waitFor({ timeout: 4000 });
+    await shot(impostor, '32c-splash-derrota');
+    await shot(innocent, '32b-splash-vitoria');
+    for (const p of players) await p.page.getByRole('button', { name: 'Continuar' }).waitFor({ state: 'detached', timeout: 8000 });
+    await sleep(1200);
     await shot(host, '33-resultado', { fullPage: true });
     await shot(players[4], '34-resultado-desktop', { fullPage: true });
     await shot(impostor, '35-resultado-derrota', { fullPage: true });
+    // imagem para compartilhar (no desktop vira download)
+    const [download] = await Promise.all([
+      players[4].page.waitForEvent('download', { timeout: 10000 }),
+      byName(players[4].page, 'button', /compartilhar resultado/i).click(),
+    ]);
+    const shareFile = join(OUT, '35c-imagem-compartilhar--desktop.png');
+    await download.saveAs(shareFile);
+    shots.push(shareFile);
     // abre as estatísticas de um jogador no placar
     await host.page.getByRole('button', { name: new RegExp(`${host.device.name}.*pts`) }).first().click();
     await sleep(500);
     await shot(host, '35b-estatisticas');
 
-    // ── Jogar novamente + empate ──
-    await byName(host.page, 'button', /jogar novamente/i).click();
+    // ── Lobby: modo sem palavra + ajuda fácil + votos secretos + partida até 10 ──
+    await byName(host.page, 'button', /^⚙️ lobby$/i).click();
+    await waitText(host, 'Configurações');
+    await host.page.getByRole('radio', { name: /sem palavra/i }).click();
+    await host.page.getByRole('radio', { name: /fácil/i }).click();
+    await host.page.getByRole('radio', { name: /rápido/i }).click();
+    await host.page.getByRole('radio', { name: /em chamada/i }).click();
+    await host.page.getByRole('radio', { name: /sem limite de tempo/i }).click();
+    await byName(host.page, 'button', /mais opções/i).click();
+    await host.page.getByRole('radio', { name: /secretos/i }).click();
+    await host.page.getByRole('radio', { name: /^10 pts$/i }).click();
+    await sleep(600);
+    await shot(players[4], '35d-lobby-mais-opcoes-desktop', { fullPage: true });
+    await shot(host, '35e-lobby-mais-opcoes', { fullPage: true });
+
+    // ── Nova rodada em modo chamada: discussão sem tempo, "pular" e empate com o pular ──
+    await byName(host.page, 'button', /iniciar partida/i).click();
     for (const p of players) await p.page.getByRole('button', { name: /revelar sua carta/i }).waitFor();
     for (const p of players) {
       await p.page.getByRole('button', { name: /revelar sua carta/i }).click();
-      p.impostor = (await p.page.getByText('VOCÊ É O IMPOSTOR').count()) > 0;
+      p.impostor = (await p.page.getByTestId('card-face').getAttribute('data-role')) === 'impostor';
     }
     await sleep(900);
     await shot(host, '36-jogar-novamente-carta');
+    await shot(players.find((p) => p.impostor), '36b-carta-impostor-facil');
     for (const p of players) await byName(p.page, 'button', /toquei e vi/i).click();
-    turns = 0;
-    const words = ['pista', 'ideia', 'sabor', 'cheiro', 'textura', 'cor'];
-    while (turns < 6) {
-      let current = null;
-      for (let tries = 0; tries < 60 && !current; tries += 1) {
-        for (const p of players) if (await p.page.locator('#clue-input').isVisible()) current = p;
-        if (!current) await sleep(150);
+
+    const playClues = async (words) => {
+      let n = 0;
+      while (n < 6) {
+        let current = null;
+        for (let tries = 0; tries < 60 && !current; tries += 1) {
+          for (const p of players) if (await p.page.locator('#clue-input').isVisible()) current = p;
+          if (!current) await sleep(150);
+        }
+        if (!current) throw new Error('não encontrei de quem é a vez');
+        await current.page.getByLabel('Sua pista (uma palavra)').fill(words[n]);
+        await byName(current.page, 'button', /enviar pista/i).click();
+        await current.page.locator('#clue-input').waitFor({ state: 'detached' });
+        n += 1;
+        await sleep(250);
       }
-      await current.page.getByLabel('Sua pista (uma palavra)').fill(words[turns]);
-      await byName(current.page, 'button', /enviar pista/i).click();
-      await current.page.locator('#clue-input').waitFor({ state: 'detached' });
-      turns += 1;
-      await sleep(250);
+    };
+    const voteWith = async (plan) => {
+      const entries = [...plan];
+      for (const [i, [voter, target]] of entries.entries()) {
+        if (target === 'skip') await voter.page.getByRole('radio', { name: /pular voto/i }).click();
+        else await voter.page.getByRole('radio', { name: new RegExp(`^${target.device.name}\\.`) }).click();
+        await byName(voter.page, 'button', target === 'skip' ? /pular voto/i : /votar em/i).last().click();
+        // o último voto encerra a votação na hora (a tela muda para a revelação)
+        if (i < entries.length - 1) await voter.page.getByText('VOTO CONFIRMADO').waitFor({ timeout: 8000 });
+      }
+    };
+
+    await playClues(['pista', 'ideia', 'sabor', 'cheiro', 'textura', 'cor']);
+    await waitText(host, 'Falem na chamada');
+    await sleep(2500); // sem cronômetro: continua na discussão
+    // notas pessoais: Pedro suspeito (1 toque), Lucas de confiança (2 toques)
+    await host.page.getByRole('button', { name: /^Pedro: .*Toque para marcar/ }).click();
+    await host.page.getByRole('button', { name: /^Lucas: .*Toque para marcar/ }).click();
+    await host.page.getByRole('button', { name: /^Lucas: .*Toque para marcar/ }).click();
+    // reações de vários jogadores
+    for (const [i, emoji] of [[1, '😂'], [2, '🤨'], [3, '😱'], [5, '🤡']]) {
+      await byName(players[i].page, 'button', `Reagir com ${emoji}`).click();
     }
-    await waitText(host, 'DISCUSSÃO');
-    for (const p of players) await byName(p.page, 'button', /pronto para votar/i).click();
-    await waitText(host, 'QUEM É O IMPOSTOR?');
-    // 3 x 3 entre dois jogadores
-    const [a, b, ...rest] = players;
-    const plan = new Map([[a, b], [b, a], [rest[0], a], [rest[1], a], [rest[2], b], [rest[3], b]]);
-    for (const [voter, target] of plan) {
-      await voter.page.getByRole('radio', { name: new RegExp(`^${target.device.name}\\.`) }).click();
-      await byName(voter.page, 'button', /votar em/i).click();
-    }
-    await waitText(host, 'EMPATE', 15000);
-    await waitText(host, 'terão que se explicar', 12000);
     await sleep(700);
-    await shot(host, '37-empate');
-    await waitText(host, 'Rodada 2/3', 10000);
+    await shot(host, '36c-discussao-chamada-host');
+    await shot(players[5], '36d-discussao-chamada');
+    await shot(players[4], '36e-discussao-chamada-desktop');
+    // o host abre a votação sem esperar todo mundo marcar "pronto"
+    await byName(players[1].page, 'button', /pronto para votar/i).click();
+    await byName(host.page, 'button', /abrir votação agora/i).click();
+    await host.page.getByRole('dialog', { name: 'Abrir a votação?' }).waitFor();
+    await sleep(400);
+    await shot(host, '36f-abrir-votacao');
+    await byName(host.page, 'button', /^🗳️ abrir votação$/i).click();
+    await waitText(host, 'QUEM É O IMPOSTOR?');
+    await sleep(600);
+
+    // "Pular" vence: 4 pulam, 1 voto em A, 1 em B
+    const [a, b, ...rest] = players;
+    await host.page.getByRole('radio', { name: /pular voto/i }).click();
+    await sleep(400);
+    await shot(host, '36g-votacao-pular');
+    await voteWith(new Map([[a, 'skip'], [b, 'skip'], [rest[0], 'skip'], [rest[1], a], [rest[2], b], [rest[3], 'skip']]));
+    await waitText(host, 'PULARAM', 15000);
+    await sleep(900);
+    await shot(host, '36h-votos-pularam');
+    await waitText(host, 'NINGUÉM SAIU', 12000);
+    await sleep(700);
+    await shot(host, '37-ninguem-saiu');
+    await waitText(host, 'Ordem sorteada', 10000); // abertura da rodada de pistas
     await sleep(300);
     await shot(host, '38-rodada-2-intro');
 
-    // ── Sair da sala ──
+    // Rodada 2: empate entre A e o "pular" (3 x 3)
+    await playClues(['praia', 'ferro', 'nuvem', 'papel', 'festa', 'vidro']);
+    await waitText(host, 'Falem na chamada');
+    for (const p of players) await byName(p.page, 'button', /pronto para votar/i).click();
+    await waitText(host, 'QUEM É O IMPOSTOR?');
+    await voteWith(new Map([[a, 'skip'], [b, a], [rest[0], a], [rest[1], a], [rest[2], 'skip'], [rest[3], 'skip']]));
+    await waitText(host, 'EMPATE', 15000);
+    await sleep(900);
+    await shot(host, '38b-votos-empate-pular');
+    await waitText(host, 'convença a galera', 12000);
+    await sleep(700);
+    await shot(host, '38c-empate-com-pular');
+
+    // ── Host encerra a rodada (sem limite de rodadas, precisa de uma saída) ──
+    await waitText(host, 'Rodada 3', 10000); // tela "empate" (chip da próxima rodada)
     await host.page.getByRole('button', { name: 'Sair da sala' }).click();
     await sleep(400);
-    await shot(host, '39-confirmar-saida');
+    await shot(host, '39-encerrar-ou-sair');
+    await byName(host.page, 'button', /encerrar rodada/i).click();
+    await waitText(players[1], 'encerrou a rodada');
+    await waitText(host, 'Configurações');
+    await sleep(500);
+    await shot(players[1], '39b-rodada-encerrada');
 
     // ── Console ──
     for (const p of players) {
@@ -373,7 +552,7 @@ async function main() {
   const shortPort = await listen(shortServer, 0);
   const browser2 = await chromium.launch({ executablePath: executablePath() });
   try {
-    const p = await openPlayer(browser2, DEVICES[0], `http://127.0.0.1:${shortPort}`);
+    const p = await openPlayer(browser2, { ...DEVICES[0], tutorial: false }, `http://127.0.0.1:${shortPort}`);
     await p.page.getByLabel('Seu apelido').fill('Dorminhoco');
     await byName(p.page, 'button', /criar sala/i).click();
     await waitText(p, 'Código da sala');

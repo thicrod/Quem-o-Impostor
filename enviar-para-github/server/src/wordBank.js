@@ -83,6 +83,16 @@ class WordBank {
     return key === RANDOM_CATEGORY || this.categories.has(key);
   }
 
+  keys() {
+    return [...this.categories.keys()];
+  }
+
+  /** Normaliza uma lista de categorias: remove inválidas; vazia => todas. */
+  normalizeKeys(keys) {
+    const valid = (keys || []).filter((k) => this.categories.has(k));
+    return valid.length ? [...new Set(valid)] : this.keys();
+  }
+
   /** Lista pública (sem as palavras!) para o cliente montar o seletor. */
   publicList() {
     return [...this.categories.values()].map(({ key, label, emoji, words }) => ({
@@ -96,15 +106,16 @@ class WordBank {
   }
 
   /**
-   * Sorteia categoria (se "aleatória") e palavra, evitando repetir as palavras
-   * já usadas na sala (`used` é um Set mantido pela sala).
+   * Sorteia a categoria (entre as escolhidas) e a palavra, evitando repetir as
+   * palavras já usadas na sala (`used` é um Set mantido pela sala).
+   * `categoryKeys` pode ser uma chave, "aleatoria" ou uma lista de chaves.
    */
-  pick(categoryKey, used = new Set(), rng = Math.random) {
-    let key = categoryKey;
-    if (key === RANDOM_CATEGORY || !this.categories.has(key)) {
-      const keys = [...this.categories.keys()];
-      key = keys[Math.floor(rng() * keys.length)];
-    }
+  pick(categoryKeys, used = new Set(), rng = Math.random) {
+    let options;
+    if (Array.isArray(categoryKeys)) options = this.normalizeKeys(categoryKeys);
+    else if (categoryKeys === RANDOM_CATEGORY || !this.categories.has(categoryKeys)) options = this.keys();
+    else options = [categoryKeys];
+    const key = options[Math.floor(rng() * options.length)];
     const cat = this.categories.get(key);
     let pool = cat.words.filter((w) => !used.has(`${key}:${w.word}`));
     if (pool.length === 0) {

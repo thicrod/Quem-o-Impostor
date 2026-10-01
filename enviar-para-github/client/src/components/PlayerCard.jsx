@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { Avatar, Chip, cx } from './ui.jsx';
 
 /** Card de jogador do lobby (entra/sai com animação). */
-export const LobbyPlayerCard = forwardRef(function LobbyPlayerCard({ player, isMe }, ref) {
+export const LobbyPlayerCard = forwardRef(function LobbyPlayerCard({ player, isMe, onManage }, ref) {
   const offline = !player.connected;
   return (
     <motion.li
@@ -21,6 +21,17 @@ export const LobbyPlayerCard = forwardRef(function LobbyPlayerCard({ player, isM
     >
       {player.isHost && (
         <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-2xl drop-shadow" title="Host" aria-hidden="true">👑</span>
+      )}
+      {onManage && (
+        <button
+          type="button"
+          onClick={onManage}
+          className="absolute top-1 right-1 grid size-10 place-items-center rounded-full text-xl font-black text-ink-200 transition-colors hover:bg-white/10 hover:text-white"
+          aria-label={`Opções de ${player.nickname}`}
+          title="Opções do host"
+        >
+          ⋯
+        </button>
       )}
       <Avatar player={player} size="lg" showStatus />
       <p className="w-full truncate px-1 text-base font-extrabold text-white">{player.nickname}</p>

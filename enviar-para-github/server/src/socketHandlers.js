@@ -2,7 +2,8 @@
 // jogadores e repassa as ações para a sala. Nenhuma regra de jogo mora aqui.
 
 import {
-  AVATARS, ENV, LIMITS, MAX_ABUSE_STRIKES, RANDOM_CATEGORY, SCORING, SETTINGS_OPTIONS, DURATIONS,
+  AVATARS, ENV, LIMITS, MAX_ABUSE_STRIKES, MAX_CATEGORIES_SELECTED, REACTIONS, SCORING, SETTINGS_OPTIONS, DURATIONS,
+  SKIP_VOTE,
 } from './config.js';
 import { GameError } from './room.js';
 import { RateLimiter } from './rateLimiter.js';
@@ -20,12 +21,11 @@ const CLOSE_MESSAGES = {
 
 export function buildMeta(wordBank) {
   return {
-    version: 2,
+    version: 3,
     avatars: AVATARS,
-    categories: [
-      { key: RANDOM_CATEGORY, label: 'Aleatória', emoji: '🎲', count: wordBank.totalWords() },
-      ...wordBank.publicList(),
-    ],
+    reactions: REACTIONS,
+    categories: wordBank.publicList(),
+    totalWords: wordBank.totalWords(),
     settingsOptions: SETTINGS_OPTIONS,
     limits: {
       minPlayers: LIMITS.MIN_PLAYERS,
@@ -36,10 +36,9 @@ export function buildMeta(wordBank) {
       chatMax: LIMITS.CHAT_MAX,
       guessMax: LIMITS.GUESS_MAX,
       codeLength: LIMITS.CODE_LENGTH,
-      maxVoteRounds: LIMITS.MAX_VOTE_ROUNDS,
     },
     scoring: SCORING,
-    durations: { votingSeconds: DURATIONS.VOTING / 1000, lastChanceSeconds: DURATIONS.LAST_CHANCE / 1000 },
+    durations: { lastChanceSeconds: DURATIONS.LAST_CHANCE / 1000 },
   };
 }
 
@@ -62,13 +61,13 @@ const S = {
   avatar: { avatar: t.string(16) },
   settings: {
     category: t.string(40, { optional: true }),
-    impostorCount: t.enumOf(SETTINGS_OPTIONS.impostorCount, { optional: true }),
-    impostorMode: t.enumOf(SETTINGS_OPTIONS.impostorMode, { optional: true }),
-    clueSeconds: t.enumOf(SETTINGS_OPTIONS.clueSeconds, { optional: true }),
-    discussionSeconds: t.enumOf(SETTINGS_OPTIONS.discussionSeconds, { optional: true }),
+    categories: t.stringList(MAX_CATEGORIES_SELECTED, 40, { optional: true }),
+    ...Object.fromEntries(Object.entries(SETTINGS_OPTIONS).map(([k, v]) => [k, t.enumOf(v, { optional: true })])),
   },
   text: (max) => ({ text: t.string(max) }),
   vote: { targetId: t.id() },
+  target: { targetId: t.id() },
+  reaction: { emoji: t.enumOf(REACTIONS) },
 };
 
 export function attachSocketHandlers(io, manager, wordBank) {
@@ -146,8 +145,11 @@ export function attachSocketHandlers(io, manager, wordBank) {
     };
 
     const KNOWN_EVENTS = new Set();
-    /** Registra um handler com validação + rate limit + tratamento de erro. */
-    const on = (event, schema, handler, bucket = 'default') => {
+    /**
+     * Registra um handler com validação + rate limit + tratamento de erro.
+     * `soft`: estourar o limite só recusa (sem contar como abuso) — ex.: reações.
+     */
+    const on = (event, schema, handler, bucket = 'default', { soft = false } = {}) => {
       KNOWN_EVENTS.add(event);
       socket.on(event, (payload, ack) => {
         let reply = ack;
@@ -158,7 +160,7 @@ export function attachSocketHandlers(io, manager, wordBank) {
         }
         const respond = typeof reply === 'function' ? reply : () => {};
         if (!limiter.consume(bucket)) {
-          strike();
+          if (!soft) strike();
           respond({ ok: false, code: 'RATE_LIMITED', message: 'Calma! Muitas ações seguidas. Espere um pouquinho.' });
           return;
         }
@@ -300,7 +302,23 @@ export function attachSocketHandlers(io, manager, wordBank) {
       room.sendChat(id, text);
     })(), 'chat');
     on('discussion:ready', null, inRoom((room, id) => room.toggleReady(id)));
+    on('discussion:startVoting', null, inRoom((room, id) => room.forceVoting(id)));
     on('vote:cast', S.vote, ({ targetId }) => inRoom((room, id) => room.castVote(id, targetId))());
+    on('vote:skip', null, inRoom((room, id) => room.castVote(id, SKIP_VOTE)));
+    on('game:end', null, inRoom((room, id) => room.endRound(id)));
+    on('reaction:send', S.reaction, ({ emoji }) => inRoom((room, id) => room.react(id, emoji))(), 'reaction', { soft: true });
+    on('host:transfer', S.target, ({ targetId }) => inRoom((room, id) => room.makeHost(id, targetId))());
+    on('player:kick', S.target, ({ targetId }) => inRoom((room, id) => {
+      const target = room.kick(id, targetId);
+      clientRooms.delete(target.clientId);
+      const kicked = target.socketId && io.sockets.sockets.get(target.socketId);
+      if (kicked) {
+        kicked.leave(roomKey(room.code));
+        kicked.data.code = null;
+        kicked.data.playerId = null;
+        kicked.emit('room:kicked', { message: 'O host removeu você da sala.' });
+      }
+    })());
     on('guess:submit', S.text(LIMITS.GUESS_MAX), ({ text }) => inRoom((room, id) => room.submitGuess(id, text))());
     on('game:playAgain', null, inRoom((room, id) => room.playAgain(id)));
     on('game:toLobby', null, inRoom((room, id) => room.backToLobby(id)));

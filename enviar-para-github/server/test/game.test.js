@@ -44,7 +44,7 @@ function everyoneVotes(allBots, target) {
 
 describe('fluxo completo com 6 jogadores', () => {
   test('lobby → carta → pistas → discussão → votação → resultado (grupo acerta, impostor erra)', async () => {
-    const { bots: six, host, code } = await sixPlayers({ category: 'comida', impostorMode: 'similar' });
+    const { bots: six, host, code } = await sixPlayers({ category: 'comida', impostorMode: 'similar', discussionMode: 'chat' });
     assert.match(code, /^[A-Z2-9]{6}$/);
     assert.equal(host.state.you.isHost, true);
     assert.equal(host.state.settings.impostorMode, 'similar');
@@ -120,7 +120,7 @@ describe('fluxo completo com 6 jogadores', () => {
     assert.equal(again.ok, true);
     await everyone(six, (b) => b.waitFor((x) => x.state.phase === 'reveal' && x.state.game.number === 2, { label: 'rodada 2' }));
     assert.equal(host.state.players.length, 6);
-    assert.equal(host.state.settings.category, 'comida');
+    assert.deepEqual(host.state.settings.categories, ['comida']);
     assert.equal(host.state.players.find((p) => p.id === innocents[0].id).score, 2);
     const newSecret = six.find((b) => b.card.role === 'innocent').card.word;
     assert.notEqual(newSecret, secret, 'palavra nova');
@@ -166,44 +166,6 @@ describe('fluxo completo com 6 jogadores', () => {
     const imp = host.state.players.find((p) => p.id === impostor.id);
     assert.equal(imp.stats.escapes, 1);
     assert.equal(imp.stats.wins, 1);
-  });
-
-  test('empate: nova rodada de pistas + discussão + votação, máximo 3; depois o impostor escapa', async () => {
-    const { bots: six, host } = await sixPlayers();
-    await startAndReveal(six);
-    const { impostor } = roles(six);
-    const [a, b, ...rest] = six;
-    // 3 x 3 entre A e B
-    const tiePlan = {
-      [a.nickname]: b.nickname,
-      [b.nickname]: a.nickname,
-      [rest[0].nickname]: a.nickname,
-      [rest[1].nickname]: a.nickname,
-      [rest[2].nickname]: b.nickname,
-      [rest[3].nickname]: b.nickname,
-    };
-    for (let round = 1; round <= 3; round += 1) {
-      await host.waitFor((x) => x.state.phase === 'clues' && x.state.game.round === round, { label: `pistas rodada ${round}` });
-      await playClueRound(six);
-      await finishDiscussion(six);
-      assert.equal(host.state.game.round, round);
-      await vote(six, tiePlan);
-      await host.waitPhase('voteReveal');
-      const rec = host.state.game.voteHistory.at(-1);
-      assert.equal(rec.tie, true);
-      assert.deepEqual([...rec.tiedIds].sort(), [a.id, b.id].sort());
-      if (round < 3) {
-        await host.waitPhase('tie');
-        assert.deepEqual([...host.state.game.tiedIds].sort(), [a.id, b.id].sort());
-      }
-    }
-    await host.waitPhase('result', { timeout: 8000 });
-    const { result } = host.state.game;
-    assert.equal(host.state.game.voteHistory.length, 3);
-    assert.equal(host.state.game.clues.length, 18, '3 rodadas de pistas');
-    assert.equal(result.outcome, 'escaped');
-    assert.equal(result.reason, 'tie');
-    assert.equal(result.pointsDelta[impostor.id], 3);
   });
 
   test('dois impostores só com 6 jogadores', async () => {
@@ -259,6 +221,10 @@ describe('segurança e autoridade do servidor', () => {
     assert.equal((await host.request('settings:update', {})).code, 'BAD_SETTING');
     assert.equal((await guest.request('chat:send', { text: 'oi' })).code, 'WRONG_PHASE');
     assert.equal((await guest.request('vote:cast', { targetId: host.id })).code, 'WRONG_PHASE');
+    assert.equal((await guest.request('vote:skip')).code, 'WRONG_PHASE');
+    assert.equal((await guest.request('discussion:startVoting')).code, 'NOT_HOST');
+    assert.equal((await guest.request('game:end')).code, 'NOT_HOST');
+    assert.equal((await host.request('game:end')).code, 'WRONG_PHASE');
 
     await startAndReveal(six);
     await host.waitFor((b) => b.state.game.currentTurnId, { label: 'vez' });
@@ -274,6 +240,7 @@ describe('segurança e autoridade do servidor', () => {
     assert.equal((await six[0].request('vote:cast', { targetId: { $gt: '' } })).code, 'BAD_REQUEST');
     assert.equal((await six[0].request('vote:cast', { targetId: six[1].id })).ok, true);
     assert.equal((await six[0].request('vote:cast', { targetId: six[2].id })).code, 'ALREADY_VOTED');
+    assert.equal((await six[0].request('vote:skip')).code, 'ALREADY_VOTED');
     assert.equal((await six[0].request('game:playAgain')).code, 'WRONG_PHASE');
   });
 
@@ -305,6 +272,7 @@ describe('segurança e autoridade do servidor', () => {
     const { bots: three } = await (async () => {
       const r = await createRoomWith(server.url, 3, { names: ['Spam1', 'Spam2', 'Spam3'] });
       track(r.bots);
+      assert.equal((await r.host.request('settings:update', { discussionMode: 'chat' })).ok, true);
       return r;
     })();
     await startAndReveal(three);
@@ -348,7 +316,9 @@ describe('validações de entrada na sala', () => {
 
 describe('reconexão', () => {
   test('cair e voltar no lobby, pistas, discussão e votação mantém sala, papel e pontos', async () => {
-    const { bots: six, host, code } = await sixPlayers({ category: 'objetos', impostorMode: 'similar', clueSeconds: 60 });
+    const { bots: six, host, code } = await sixPlayers({
+      category: 'objetos', impostorMode: 'similar', clueSeconds: 60, discussionMode: 'chat',
+    });
     const victim = six[3];
     const originalId = victim.id;
 
@@ -496,7 +466,11 @@ describe('saídas e timers', () => {
     await host.waitPhase('voting', { timeout: 6000 });
     assert.ok(host.state.timer.remainingMs > 0 && host.state.timer.remainingMs <= host.state.timer.durationMs);
     await host.waitPhase('voteReveal', { timeout: 6000 });
-    assert.equal(host.state.game.voteHistory.at(-1).tie, true, 'sem votos = empate');
+    const rec = host.state.game.voteHistory.at(-1);
+    assert.equal(rec.verdict, 'noVotes', 'sem votos = ninguém sai');
+    assert.equal(rec.eliminatedId, null);
+    await host.waitPhase('tie', { timeout: 6000 });
+    await host.waitFor((b) => b.state.phase === 'clues' && b.state.game.round === 2, { label: 'rodada 2', timeout: 6000 });
   });
 });
 

@@ -1,6 +1,6 @@
 {
   "name": "quem-e-o-impostor",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
   "description": "Quem é o Impostor? — jogo web multiplayer de dedução social (React + Socket.IO)",
   "workspaces": [

@@ -45,7 +45,16 @@ export function createGameServer({ ttlMs } = {}) {
 
   // Em produção o próprio servidor entrega o build do React.
   if (existsSync(CLIENT_DIST)) {
-    app.use(express.static(CLIENT_DIST, { maxAge: isProd ? '1h' : 0, index: false }));
+    app.use(express.static(CLIENT_DIST, {
+      maxAge: isProd ? '1h' : 0,
+      index: false,
+      setHeaders(res, filePath) {
+        // Arquivos com hash nunca mudam; o service worker e o manifest sempre revalidam.
+        if (/[\\/]assets[\\/]/.test(filePath)) res.set('Cache-Control', 'public, max-age=31536000, immutable');
+        else if (/(sw\.js|\.webmanifest)$/.test(filePath)) res.set('Cache-Control', 'no-cache');
+        if (filePath.endsWith('.webmanifest')) res.type('application/manifest+json');
+      },
+    }));
     app.get(/^(?!\/socket\.io\/).*/, (_req, res) => {
       res.set('Cache-Control', 'no-cache');
       res.sendFile(join(CLIENT_DIST, 'index.html'));

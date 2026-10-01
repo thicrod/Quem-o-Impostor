@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useGame, useRoom } from '../hooks/useGame.jsx';
-import { canShare, copyText, shareRoom } from '../lib/format.js';
+import { canShare, copyText, roomLink, shareRoom } from '../lib/format.js';
 import { playSound } from '../lib/sound.js';
-import { Button, Panel, SectionTitle, cx } from '../components/ui.jsx';
+import { Button, Panel, SectionTitle } from '../components/ui.jsx';
 import { EmptySlot, LobbyPlayerCard } from '../components/PlayerCard.jsx';
 import { AvatarPicker } from '../components/AvatarPicker.jsx';
 import { Segmented } from '../components/Segmented.jsx';
+import { CategoryPicker } from '../components/CategoryPicker.jsx';
 import { Modal } from '../components/Shell.jsx';
+import { QrCode } from '../components/QrCode.jsx';
+import { ReactionBar } from '../components/Reactions.jsx';
 import { Leaderboard } from '../components/Leaderboard.jsx';
 import { HowToPlay } from '../components/HowToPlay.jsx';
 
@@ -16,9 +19,32 @@ const MODE_HELP = {
   similar: 'O impostor recebe uma palavra parecida (ex.: lasanha em vez de pizza) e sabe que é o impostor.',
 };
 
+const DISCUSSION_HELP = {
+  call: '📞 Vocês conversam por voz (Discord, WhatsApp, Meet…). O chat de texto fica escondido.',
+  chat: '💬 Sem chamada? Conversem pelo chat do app durante a discussão.',
+};
+
+const HINT_HELP = {
+  hard: '🔥 Difícil: o impostor não sabe nem a categoria.',
+  normal: '🙂 Normal: o impostor sabe só a categoria.',
+  easy: '🍀 Fácil: sabe a categoria e quantas letras a palavra tem.',
+};
+
+// Ritmos prontos: mudam só os tempos e as voltas de pista.
+const PRESETS = [
+  { key: 'fast', label: '⚡ Rápido', settings: { clueSeconds: 20, discussionSeconds: 60, votingSeconds: 30, clueRounds: 1 } },
+  { key: 'classic', label: '🎯 Clássico', settings: { clueSeconds: 30, discussionSeconds: 90, votingSeconds: 45, clueRounds: 1 } },
+  { key: 'long', label: '🧠 Longo', settings: { clueSeconds: 45, discussionSeconds: 120, votingSeconds: 60, clueRounds: 2 } },
+];
+
+const matchPreset = (s) => PRESETS.find((p) => Object.entries(p.settings).every(([k, v]) => s[k] === v))?.key ?? null;
+
+const fmtSeconds = (v) => (v >= 120 ? `${v / 60}min` : `${v}s`);
+
 function RoomCodeCard({ code }) {
   const { actions } = useGame();
   const [copied, setCopied] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
 
   const onCopy = async () => {
     const ok = await copyText(code);
@@ -55,71 +81,29 @@ function RoomCodeCard({ code }) {
           </motion.span>
         ))}
       </p>
-      <div className="mt-4 grid grid-cols-2 gap-3">
+      <div className="mt-4 grid grid-cols-[1fr_1fr_auto] gap-2.5">
         <Button variant={copied ? 'success' : 'ghost'} size="md" className="px-2 text-[15px] whitespace-nowrap" onClick={onCopy} aria-live="polite">
           {copied ? '✓ Copiado!' : '📋 Copiar'}
         </Button>
         <Button variant="secondary" size="md" className="px-2 text-[15px] whitespace-nowrap" onClick={onShare}>
-          {canShare() ? '📤 Compartilhar' : '🔗 Link'}
+          {canShare() ? '📤 Enviar' : '🔗 Link'}
+        </Button>
+        <Button variant="ghost" size="md" className="px-3 text-[15px]" onClick={() => setQrOpen(true)} aria-label="Mostrar QR code da sala">
+          QR
         </Button>
       </div>
-    </Panel>
-  );
-}
-
-function CategoryPicker({ categories, value, disabled, onChange }) {
-  const [open, setOpen] = useState(false);
-  const current = categories.find((c) => c.key === value) || categories[0];
-  return (
-    <>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen(true)}
-        className={cx(
-          'flex min-h-14 w-full items-center gap-3 rounded-2xl border-2 px-4 text-left transition-colors',
-          disabled ? 'cursor-default border-white/10 bg-white/5' : 'border-white/15 bg-ink-950/50 hover:border-sky-400/60',
-        )}
-        aria-haspopup="dialog"
-        aria-label={`Categoria: ${current?.label}${disabled ? '' : '. Toque para trocar'}`}
-      >
-        <span className="text-3xl" aria-hidden="true">{current?.emoji}</span>
-        <span className="flex-1">
-          <span className="block font-display text-xl text-white">{current?.label}</span>
-          <span className="block text-xs font-bold text-ink-300">
-            {current?.key === 'aleatoria' ? 'O servidor sorteia a cada rodada' : `${current?.count} palavras`}
-          </span>
-        </span>
-        {!disabled && <span className="text-sky-400" aria-hidden="true">Trocar ›</span>}
-      </button>
       <Modal
-        open={open}
-        onClose={() => setOpen(false)}
-        title="Escolha a categoria"
-        actions={<Button variant="ghost" size="md" onClick={() => setOpen(false)}>Fechar</Button>}
+        open={qrOpen}
+        onClose={() => setQrOpen(false)}
+        title="Entrar pelo QR code"
+        actions={<Button variant="ghost" size="md" onClick={() => setQrOpen(false)}>Fechar</Button>}
       >
-        <div className="-mx-1 grid max-h-[55dvh] grid-cols-2 gap-2 overflow-y-auto px-1 py-1 sm:grid-cols-3">
-          {categories.map((c) => (
-            <button
-              key={c.key}
-              type="button"
-              onClick={() => {
-                onChange(c.key);
-                setOpen(false);
-              }}
-              className={cx(
-                'flex min-h-16 flex-col items-center justify-center rounded-2xl border-2 px-2 py-2 text-center',
-                c.key === value ? 'border-hot-400 bg-hot-500/15' : 'border-white/10 bg-white/5 hover:border-white/30',
-              )}
-              aria-pressed={c.key === value}
-            >
-              <span className="text-2xl" aria-hidden="true">{c.emoji}</span>
-              <span className="text-sm font-extrabold text-white">{c.label}</span>
-            </button>
-          ))}
+        <div className="flex flex-col items-center gap-3 pt-2">
+          {qrOpen && <QrCode text={roomLink(code)} />}
+          <p className="text-center text-sm">Aponte a câmera do celular para entrar direto na sala <b className="font-mono text-white">{code}</b>.</p>
         </div>
       </Modal>
-    </>
+    </Panel>
   );
 }
 
@@ -135,10 +119,145 @@ function Setting({ title, help, children }) {
   );
 }
 
+function AdvancedSettings({ s, meta, isHost, update }) {
+  const [open, setOpen] = useState(false);
+  const changed = s.clueRounds !== 1 || s.votingSeconds !== 45 || s.anonymousVotes || s.targetScore > 0;
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/4">
+      <button
+        type="button"
+        className="flex min-h-12 w-full items-center justify-between gap-2 px-4 text-left text-sm font-extrabold tracking-wide text-ink-100 uppercase"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span>🛠️ Mais opções {changed && <span className="ml-1 inline-block size-2 rounded-full bg-sun-400 align-middle" aria-label="(alteradas)" />}</span>
+        <motion.span animate={{ rotate: open ? 180 : 0 }} aria-hidden="true">⌄</motion.span>
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="grid gap-5 px-4 pt-1 pb-4">
+              <Setting title="Voltas de pistas" help="Quantas pistas cada jogador dá antes da discussão.">
+                <Segmented
+                  label="Voltas de pistas"
+                  name="clueRounds"
+                  value={s.clueRounds}
+                  disabled={!isHost}
+                  onChange={(clueRounds) => update({ clueRounds })}
+                  options={(meta?.settingsOptions.clueRounds || [1, 2]).map((v) => ({ value: v, label: v === 1 ? '1 pista' : `${v} pistas` }))}
+                />
+              </Setting>
+              <Setting title="Tempo de votação">
+                <Segmented
+                  label="Tempo de votação"
+                  name="voting"
+                  value={s.votingSeconds}
+                  disabled={!isHost}
+                  onChange={(votingSeconds) => update({ votingSeconds })}
+                  options={(meta?.settingsOptions.votingSeconds || [30, 45, 60]).map((v) => ({ value: v, label: fmtSeconds(v) }))}
+                />
+              </Setting>
+              <Setting
+                title="Votos"
+                help={s.anonymousVotes ? 'Secretos: aparece só quantos votos cada um levou, não quem votou em quem.' : 'Abertos: todo mundo vê quem votou em quem.'}
+              >
+                <Segmented
+                  label="Tipo de voto"
+                  name="anon"
+                  value={s.anonymousVotes}
+                  disabled={!isHost}
+                  onChange={(anonymousVotes) => update({ anonymousVotes })}
+                  options={[
+                    { value: false, label: '👀 Abertos' },
+                    { value: true, label: '🕶️ Secretos' },
+                  ]}
+                />
+              </Setting>
+              <Setting
+                title="Partida até"
+                help={s.targetScore > 0 ? `Quem chegar a ${s.targetScore} pontos primeiro é o campeão. Depois o placar zera.` : 'Sem limite: o placar só acumula.'}
+              >
+                <Segmented
+                  label="Pontuação para vencer"
+                  name="target"
+                  value={s.targetScore}
+                  disabled={!isHost}
+                  onChange={(targetScore) => update({ targetScore })}
+                  options={(meta?.settingsOptions.targetScore || [0, 10, 15, 20]).map((v) => ({
+                    value: v,
+                    label: v === 0 ? <span className="text-xl leading-none">∞</span> : `${v} pts`,
+                    ariaLabel: v === 0 ? 'Sem limite de pontos' : undefined,
+                  }))}
+                />
+              </Setting>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/** Menu do host para um jogador: passar a coroa ou remover da sala. */
+function ManagePlayerModal({ player, open, onClose }) {
+  const { actions } = useGame();
+  const [confirmKick, setConfirmKick] = useState(false);
+  const [busy, setBusy] = useState(null);
+
+  const run = async (kind) => {
+    setBusy(kind);
+    const res = kind === 'kick' ? await actions.kickPlayer(player.id) : await actions.makeHost(player.id);
+    setBusy(null);
+    if (!res.ok) actions.toast(res.message, 'error');
+    setConfirmKick(false);
+    onClose();
+  };
+
+  const close = () => {
+    setConfirmKick(false);
+    onClose();
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={close}
+      title={confirmKick ? `Remover ${player?.nickname}?` : `${player?.avatar ?? ''} ${player?.nickname ?? ''}`}
+      actions={confirmKick ? (
+        <>
+          <Button variant="danger" size="md" loading={busy === 'kick'} onClick={() => run('kick')}>🚫 Remover da sala</Button>
+          <Button variant="ghost" size="md" onClick={() => setConfirmKick(false)}>Voltar</Button>
+        </>
+      ) : (
+        <>
+          <Button variant="gold" size="md" loading={busy === 'host'} disabled={!player?.connected} onClick={() => run('host')}>
+            👑 Passar o host
+          </Button>
+          <Button variant="danger" size="md" onClick={() => setConfirmKick(true)}>🚫 Remover da sala</Button>
+          <Button variant="ghost" size="md" onClick={close}>Cancelar</Button>
+        </>
+      )}
+    >
+      {confirmKick
+        ? 'Ele sai da sala na hora e não consegue entrar de novo com este aparelho.'
+        : player?.connected
+          ? 'Você pode passar o comando da sala ou remover este jogador.'
+          : 'Este jogador está desconectado. Você pode removê-lo para liberar a vaga.'}
+    </Modal>
+  );
+}
+
 export default function LobbyScreen() {
   const room = useRoom();
   const { state, actions } = useGame();
   const [starting, setStarting] = useState(false);
+  // id do jogador no menu do host; `open` separado para o modal animar a saída com o conteúdo
+  const [managing, setManaging] = useState({ id: null, open: false });
   const meta = state.meta;
   const isHost = room.you.isHost;
   const s = room.settings;
@@ -179,12 +298,23 @@ export default function LobbyScreen() {
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3" aria-live="polite">
             <AnimatePresence mode="popLayout" initial={false}>
               {room.players.map((p) => (
-                <LobbyPlayerCard key={p.id} player={p} isMe={p.id === room.you.id} />
+                <LobbyPlayerCard
+                  key={p.id}
+                  player={p}
+                  isMe={p.id === room.you.id}
+                  onManage={isHost && p.id !== room.you.id ? () => setManaging({ id: p.id, open: true, snapshot: p }) : undefined}
+                />
               ))}
             </AnimatePresence>
             {Array.from({ length: slots }, (_, i) => <EmptySlot key={`empty-${i}`} />)}
           </ul>
+          <ReactionBar className="mt-4" label="Mandar uma reação para a sala" />
         </Panel>
+        <ManagePlayerModal
+          player={room.players.find((p) => p.id === managing.id) || managing.snapshot || null}
+          open={managing.open && room.players.some((p) => p.id === managing.id)}
+          onClose={() => setManaging((m) => ({ ...m, open: false }))}
+        />
 
         <Panel>
           <SectionTitle>Seu avatar</SectionTitle>
@@ -209,13 +339,23 @@ export default function LobbyScreen() {
           </SectionTitle>
           <fieldset disabled={!isHost} className="grid gap-5">
             <legend className="sr-only">Configurações da partida</legend>
-            <Setting title="Categoria" help="De onde vem a palavra secreta. 🎲 Aleatória sorteia uma categoria diferente a cada rodada.">
+            <Setting title="Ritmo" help="Atalhos que ajustam todos os tempos de uma vez.">
+              <Segmented
+                label="Ritmo da partida"
+                name="preset"
+                value={matchPreset(s)}
+                disabled={!isHost}
+                onChange={(key) => update(PRESETS.find((p) => p.key === key).settings)}
+                options={PRESETS.map((p) => ({ value: p.key, label: p.label }))}
+              />
+            </Setting>
+            <Setting title="Categorias" help="Escolha uma ou várias: a cada rodada o jogo sorteia uma delas.">
               {meta && (
                 <CategoryPicker
                   categories={meta.categories}
-                  value={s.category}
+                  value={s.categories || []}
                   disabled={!isHost}
-                  onChange={(category) => update({ category })}
+                  onChange={(categories) => update({ categories })}
                 />
               )}
             </Setting>
@@ -248,6 +388,31 @@ export default function LobbyScreen() {
                 ]}
               />
             </Setting>
+            <AnimatePresence initial={false}>
+              {s.impostorMode === 'noWord' && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden"
+                >
+                  <Setting title="Ajuda do impostor" help={HINT_HELP[s.impostorHint]}>
+                    <Segmented
+                      label="Ajuda do impostor"
+                      name="hint"
+                      value={s.impostorHint}
+                      disabled={!isHost}
+                      onChange={(impostorHint) => update({ impostorHint })}
+                      options={[
+                        { value: 'hard', label: '🔥 Difícil' },
+                        { value: 'normal', label: '🙂 Normal' },
+                        { value: 'easy', label: '🍀 Fácil' },
+                      ]}
+                    />
+                  </Setting>
+                </motion.div>
+              )}
+            </AnimatePresence>
             <Setting title="Tempo por pista" help="Quanto tempo cada jogador tem para mandar a pista na sua vez.">
               <Segmented
                 label="Tempo por pista"
@@ -258,25 +423,49 @@ export default function LobbyScreen() {
                 options={(meta?.settingsOptions.clueSeconds || [20, 30, 45, 60]).map((v) => ({ value: v, label: `${v}s` }))}
               />
             </Setting>
-            <Setting title="Tempo de discussão" help="Duração do chat antes da votação. Se todos ficarem prontos, a votação começa antes.">
+            <Setting title="Discussão" help={DISCUSSION_HELP[s.discussionMode] || DISCUSSION_HELP.call}>
+              <Segmented
+                label="Como vocês vão conversar"
+                name="discussionMode"
+                value={s.discussionMode || 'call'}
+                disabled={!isHost}
+                onChange={(discussionMode) => update({ discussionMode })}
+                options={[
+                  { value: 'call', label: '📞 Em chamada' },
+                  { value: 'chat', label: '💬 Chat no app' },
+                ]}
+              />
+            </Setting>
+            <Setting
+              title="Tempo de discussão"
+              help={s.discussionSeconds === 0
+                ? '∞ Sem limite: a votação abre quando todos estiverem prontos (ou quando o host abrir).'
+                : 'Se todos ficarem prontos antes, a votação começa na hora. O host também pode abrir a votação.'}
+            >
               <Segmented
                 label="Tempo de discussão"
                 name="discussion"
                 value={s.discussionSeconds}
                 disabled={!isHost}
                 onChange={(discussionSeconds) => update({ discussionSeconds })}
-                options={(meta?.settingsOptions.discussionSeconds || [45, 60, 90, 120, 180]).map((v) => ({
+                options={(meta?.settingsOptions.discussionSeconds || [45, 60, 90, 120, 180, 0]).map((v) => ({
                   value: v,
-                  label: v >= 120 ? `${v / 60}min` : `${v}s`,
+                  label: v === 0 ? <span className="text-xl leading-none">∞</span> : fmtSeconds(v),
+                  title: v === 0 ? 'Sem limite de tempo' : undefined,
+                  ariaLabel: v === 0 ? 'Sem limite de tempo' : undefined,
                 }))}
               />
             </Setting>
+            <AdvancedSettings s={s} meta={meta} isHost={isHost} update={update} />
           </fieldset>
         </Panel>
 
         {hasScores && (
           <Panel>
             <Leaderboard players={room.players} meId={room.you.id} title="Placar da sala" compact />
+            {s.targetScore > 0 && (
+              <p className="mt-3 text-center text-sm font-bold text-sun-400">🏁 Partida até {s.targetScore} pontos</p>
+            )}
           </Panel>
         )}
 

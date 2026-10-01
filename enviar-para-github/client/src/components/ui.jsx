@@ -6,17 +6,18 @@ import { motion } from 'motion/react';
 const cx = (...parts) => parts.filter(Boolean).join(' ');
 export { cx };
 
+// Botões "3D": a borda de baixo usa a cor -700 do tema (muda com o tema escolhido).
 const BUTTON_VARIANTS = {
   primary:
-    'text-white bg-gradient-to-b from-hot-400 to-hot-600 shadow-[0_5px_0_0_#8f0c47,0_16px_30px_-12px_rgb(255_61_139/0.7)] active:shadow-[0_1px_0_0_#8f0c47]',
+    'text-white bg-gradient-to-b from-hot-400 to-hot-600 shadow-[0_5px_0_0_var(--color-hot-700),0_16px_30px_-12px_color-mix(in_srgb,var(--color-hot-500)_70%,transparent)] active:shadow-[0_1px_0_0_var(--color-hot-700)]',
   secondary:
-    'text-ink-950 bg-gradient-to-b from-sky-400 to-sky-500 shadow-[0_5px_0_0_#0b7f9c,0_16px_30px_-12px_rgb(20_200_240/0.6)] active:shadow-[0_1px_0_0_#0b7f9c]',
+    'text-ink-950 bg-gradient-to-b from-sky-400 to-sky-500 shadow-[0_5px_0_0_var(--color-sky-700),0_16px_30px_-12px_color-mix(in_srgb,var(--color-sky-500)_60%,transparent)] active:shadow-[0_1px_0_0_var(--color-sky-700)]',
   success:
-    'text-ink-950 bg-gradient-to-b from-good-400 to-good-500 shadow-[0_5px_0_0_#0f8a55,0_16px_30px_-12px_rgb(31_216_138/0.6)] active:shadow-[0_1px_0_0_#0f8a55]',
+    'text-ink-950 bg-gradient-to-b from-good-400 to-good-500 shadow-[0_5px_0_0_var(--color-good-700),0_16px_30px_-12px_rgb(31_216_138/0.6)] active:shadow-[0_1px_0_0_var(--color-good-700)]',
   danger:
-    'text-white bg-gradient-to-b from-bad-400 to-bad-500 shadow-[0_5px_0_0_#a1122a,0_16px_30px_-12px_rgb(255_59_82/0.6)] active:shadow-[0_1px_0_0_#a1122a]',
+    'text-white bg-gradient-to-b from-bad-400 to-bad-500 shadow-[0_5px_0_0_var(--color-bad-700),0_16px_30px_-12px_rgb(255_59_82/0.6)] active:shadow-[0_1px_0_0_var(--color-bad-700)]',
   gold:
-    'text-ink-950 bg-gradient-to-b from-sun-400 to-sun-500 shadow-[0_5px_0_0_#a86200,0_16px_30px_-12px_rgb(255_159_26/0.6)] active:shadow-[0_1px_0_0_#a86200]',
+    'text-ink-950 bg-gradient-to-b from-sun-400 to-sun-500 shadow-[0_5px_0_0_var(--color-sun-700),0_16px_30px_-12px_rgb(255_159_26/0.6)] active:shadow-[0_1px_0_0_var(--color-sun-700)]',
   ghost:
     'text-ink-100 bg-white/8 border border-white/15 hover:bg-white/12 shadow-[0_4px_0_0_rgb(0_0_0/0.35)] active:shadow-none',
 };

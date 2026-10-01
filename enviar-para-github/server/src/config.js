@@ -36,7 +36,6 @@ export const LIMITS = {
   CHAT_MAX: 200,
   CHAT_HISTORY: 80,
   CODE_LENGTH: 6,
-  MAX_VOTE_ROUNDS: 3,
   // Sala cheia + jogador desconectado há mais que isso no lobby => vaga liberada.
   STALE_PLAYER_MS: 2 * 60_000,
   // Tamanho máximo de um pacote Socket.IO (bytes). Protege contra payloads gigantes.
@@ -46,7 +45,6 @@ export const LIMITS = {
 // Durações fixas (ms), antes do TIMER_SCALE.
 export const DURATIONS = {
   REVEAL: 40_000, // tempo máximo para todos verem a carta
-  VOTING: 45_000,
   VOTE_REVEAL: 7_500, // 3..2..1 + exibição dos votos
   TIE: 4_500,
   LAST_CHANCE: 20_000,
@@ -58,20 +56,44 @@ export const DURATIONS = {
 export const scaled = (ms) => Math.max(20, Math.round(ms * ENV.TIMER_SCALE));
 
 // Configurações que o host pode alterar (valores permitidos).
+// `categories` é validada à parte (lista de chaves do words.json).
 export const SETTINGS_OPTIONS = {
   impostorCount: [1, 2],
   impostorMode: ['noWord', 'similar'],
+  // Ajuda do impostor: hard = nem a categoria ele vê; normal = vê a categoria;
+  // easy = vê a categoria + quantas letras tem a palavra.
+  impostorHint: ['hard', 'normal', 'easy'],
   clueSeconds: [20, 30, 45, 60],
-  discussionSeconds: [45, 60, 90, 120, 180],
+  clueRounds: [1, 2], // voltas de pistas antes de cada discussão
+  // Discussão: "call" = o grupo conversa por voz (chat de texto desligado); "chat" = chat no app.
+  discussionMode: ['call', 'chat'],
+  discussionSeconds: [45, 60, 90, 120, 180, 0], // 0 = sem limite de tempo
+  votingSeconds: [30, 45, 60],
+  anonymousVotes: [false, true],
+  targetScore: [0, 10, 15, 20], // 0 = sem limite; senão quem chegar primeiro vence a partida
 };
 
 export const DEFAULT_SETTINGS = {
-  category: 'geral',
+  categories: ['geral'],
   impostorCount: 1,
   impostorMode: 'noWord',
+  impostorHint: 'normal',
   clueSeconds: 30,
+  clueRounds: 1,
+  discussionMode: 'call',
   discussionSeconds: 90,
+  votingSeconds: 45,
+  anonymousVotes: false,
+  targetScore: 0,
 };
+
+export const MAX_CATEGORIES_SELECTED = 40;
+
+// Voto em "pular" (ninguém). Não colide com ids de jogador (12 caracteres hex).
+export const SKIP_VOTE = 'skip';
+
+// Reações rápidas (emojis que flutuam na tela de todo mundo).
+export const REACTIONS = ['😂', '🤔', '🤨', '😱', '🤡', '👏'];
 
 export const RANDOM_CATEGORY = 'aleatoria';
 
@@ -95,6 +117,7 @@ export const RATE_LIMITS = {
   chat: { capacity: 5, refillPerSec: 0.8 },
   create: { capacity: 3, refillPerSec: 0.05 },
   join: { capacity: 6, refillPerSec: 0.5 },
+  reaction: { capacity: 5, refillPerSec: 2 },
 };
 
 // Após tantas violações de rate limit/payload inválido o socket é desconectado.

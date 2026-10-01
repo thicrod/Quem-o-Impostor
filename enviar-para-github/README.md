@@ -1,13 +1,16 @@
 # 🎭 Quem é o Impostor?
 
 Jogo web multiplayer de **dedução social** para **3 a 6 jogadores**, em salas privadas.
-Todo mundo recebe a mesma palavra secreta — menos o impostor. Cada um dá **uma pista de uma palavra**, o grupo discute no chat e vota em quem parece estar blefando. Se o impostor for pego, ele ainda tem **20 segundos para adivinhar a palavra** e roubar a vitória.
+Todo mundo recebe a mesma palavra secreta — menos o impostor. Cada um dá **uma pista de uma palavra**, o grupo conversa (na chamada de voz ou no chat do app) e vota em quem parece estar blefando — ou pula o voto. Se o impostor for pego, ele ainda tem **20 segundos para adivinhar a palavra** e roubar a vitória.
 
 - 📱 Mobile-first (feito para jogar com uma mão), funciona também em tablet e desktop
 - ⚡ Tempo real com Socket.IO, timers e regras **100% no servidor**
 - 🔁 Reconexão automática: fechou o navegador? Volta para a mesma sala, com o mesmo papel e os mesmos pontos
-- 🎨 Tema escuro neon, animações rápidas, efeitos sonoros opcionais (🔊 ON/OFF)
-- 📚 17 categorias e 968 palavras em português, cada uma com um par "parecido"
+- 🎨 6 temas de cores (Neon, Pôr do sol, Oceano, Galáxia, Hacker, Vampiro), animações rápidas, efeitos sonoros e música de fundo opcionais
+- 📲 Instalável como app (PWA): ícone na tela inicial, tela cheia, tela sempre acesa durante a partida
+- 📚 23 categorias e 1.287 palavras em português, cada uma com um par "parecido"
+- 🎓 Tutorial rápido na primeira visita e imagem do resultado para compartilhar no grupo
+- 😂 Reações ao vivo, notas pessoais de suspeita, QR code do convite, ferramentas do host e "destaques da sala"
 
 ---
 
@@ -62,26 +65,51 @@ npm start       # o servidor entrega o front + Socket.IO em http://localhost:300
 ## Como jogar e pontuação
 
 1. **Tela inicial** — escolha apelido e avatar. **Criar sala** gera um código de 6 caracteres (sem 0/O/1/I para não confundir); **Entrar em uma sala** pede o código. Links `/?sala=CODIGO` já abrem com o código preenchido.
-2. **Lobby** — código grande com **Copiar** e **Compartilhar**, jogadores como cards (👑 host, "Você", online/💤 desconectado), escolha de avatar (16 opções, sem repetição) e configurações (só o host altera):
-   - **Categoria**: 17 categorias ou 🎲 **Aleatória** (o servidor sorteia a cada rodada)
+2. **Lobby** — código grande com **Copiar**, **Enviar** e **QR code** (aponta a câmera e entra), jogadores como cards (👑 host, "Você", online/💤 desconectado), escolha de avatar (16 opções, sem repetição), reações e configurações (só o host altera). No **⋯** de cada jogador o host pode **passar o host** ou **remover da sala** (quem é removido não consegue voltar com o mesmo aparelho):
+   - **Ritmo**: atalhos ⚡ Rápido / 🎯 Clássico / 🧠 Longo (ajustam todos os tempos de uma vez)
+   - **Categorias**: uma, várias ou 🎲 todas as 23 — a cada rodada o servidor sorteia uma das escolhidas
    - **Impostores**: 1, ou 2 quando a sala tem 6 jogadores
    - **Modo do impostor**: 🙈 *sem palavra* ou 🎭 *palavra parecida* (ex.: lasanha em vez de pizza)
-   - **Tempo por pista** (20–60s) e **tempo de discussão** (45s–3min)
-3. **Carta** — carta fechada "TOQUE PARA REVELAR", animação de virada, 🟢 INOCENTE + palavra ou 🔴 IMPOSTOR. Depois, "Toquei e vi". O botão 🃏 no topo deixa espiar a carta durante a rodada.
+   - **Ajuda do impostor** (modo sem palavra): 🔥 *difícil* (nem a categoria ele vê), 🙂 *normal* (vê a categoria) ou 🍀 *fácil* (vê a categoria e quantas letras a palavra tem)
+   - **Tempo por pista** (20–60s)
+   - **Discussão**: 📞 *em chamada* (padrão — vocês conversam por voz e o chat de texto some) ou 💬 *chat no app*
+   - **Tempo de discussão**: 45s–3min ou **∞ sem limite** (a votação abre quando todos marcam "pronto" ou quando o host abre)
+   - **Mais opções**: 1 ou 2 **voltas de pistas** antes da discussão, **tempo de votação** (30–60s), **votos secretos** (só a contagem aparece) e **partida até 10/15/20 pontos** (o primeiro a chegar é o campeão 👑 e o placar zera na próxima partida)
+3. **Carta** — carta fechada "TOQUE PARA REVELAR", animação de virada, 🟢 INOCENTE + palavra ou 🔴 IMPOSTOR (com a ajuda escolhida pelo host). Depois, "Toquei e vi". O botão 🃏 no topo deixa espiar a carta durante a rodada.
 4. **Pistas** — ordem sorteada exibida a todos, vez atual em destaque com timer. **Uma palavra**; o servidor bloqueia a palavra secreta e variações (maiúsculas, acentos, plural, diminutivo, erro de digitação, partes de palavras compostas) e pistas repetidas.
-5. **Discussão** — chat em tempo real (avatar + nome), rolagem automática, aviso de novas mensagens, limite de 200 caracteres, anti-spam. Se todos marcarem **"Pronto para votar"**, a votação começa antes.
-6. **Votação** — cards clicáveis com as pistas de cada jogador, voto confirmado e **oculto** até todos votarem (ou o tempo acabar). Depois: **3… 2… 1…** e todos os votos aparecem juntos.
-7. **Empate** — tela ⚡ EMPATE!, nova rodada de pistas + discussão + votação (**Rodada 2/3**, **3/3**). **Regra de desempate:** se a 3ª votação também empatar, o grupo não chegou a um consenso e **o impostor escapa**.
+5. **Discussão** — no modo 📞 *em chamada*, a tela mostra todas as pistas e quem está pronto (sem chat). No modo 💬 *chat no app*: chat em tempo real (avatar + nome), rolagem automática, aviso de novas mensagens, limite de 200 caracteres, anti-spam. Se todos marcarem **"Pronto para votar"**, a votação começa antes; o host também pode **abrir a votação** a qualquer momento (com confirmação).
+6. **Votação** — cards clicáveis com as pistas de cada jogador + opção **⏭️ Pular voto**, voto confirmado e **oculto** até todos votarem (ou o tempo acabar). Depois: **3… 2… 1…** e todos os votos aparecem juntos, com o carimbo **ELIMINADO**. Com votos secretos, aparece só quantos votos cada um levou.
+7. **Ninguém saiu** — se o "pular" tiver mais votos, se houver **empate no topo** (entre jogadores, ou de um jogador com o "pular") ou se ninguém votar, ninguém é eliminado: tela ⚡ EMPATE! / ⏭️ NINGUÉM SAIU e **mais uma rodada** de pistas + discussão + votação, **sem limite de rodadas**. O host pode **encerrar a rodada** a qualquer momento (🚪 → Encerrar rodada: todos voltam ao lobby, sem pontos).
 8. **Última chance** — se o impostor for eliminado, ele tem 20s para digitar a palavra (acento, caixa e plural não importam). A validação é feita no servidor.
-9. **Resultado** — suspense "O IMPOSTOR ERA…", revelação, vitória/derrota (com confete 🎉), palavra e palavra do impostor, pontos da rodada com animação, **placar** estilo leaderboard (🥇🥈🥉, você, maior pontuação, vitórias) e **estatísticas** por jogador (toque no nome). Host: **Jogar novamente** (mesmos jogadores e configurações, nova palavra e novo impostor) ou voltar ao lobby. Todos: **Sair da sala**.
+9. **Resultado** — suspense "O IMPOSTOR ERA…", revelação, tela cheia de **VITÓRIA!** / **DERROTA** (com confete 🎉), botão **📸 Compartilhar resultado** (gera uma imagem com o placar), palavra e palavra do impostor, pontos da rodada com animação, **placar** estilo leaderboard (🥇🥈🥉, você, maior pontuação, vitórias) e **estatísticas** por jogador (toque no nome). Host: **Jogar novamente** (mesmos jogadores e configurações, nova palavra e novo impostor) ou voltar ao lobby. Todos: **Sair da sala**.
 
 | Resultado | Pontos |
 |---|---|
 | Grupo elimina o impostor | **+2** para cada inocente |
-| Impostor escapa (eliminaram um inocente, ou 3 empates) | **+3** para o impostor |
+| Impostor escapa (o grupo eliminou um inocente) | **+3** para o impostor |
 | Impostor eliminado, mas adivinha a palavra | **+2** para o impostor, 0 para o grupo |
 
-Estatísticas (enquanto a sala existir): pontos, vitórias, rodadas, vezes como impostor, impostores descobertos (votou no impostor), fugas e vitórias roubadas.
+Estatísticas (enquanto a sala existir): pontos, vitórias, rodadas, vezes como impostor, impostores descobertos (votou no impostor), fugas, vitórias roubadas e partidas vencidas.
+
+### Extras para jogar em grupo
+
+- **Reações ao vivo** (😂 🤔 🤨 😱 🤡 👏): flutuam na tela de todo mundo, com o nome de quem mandou. Aparecem no lobby, na discussão (modo chamada), na revelação dos votos, no empate, na última chance e no resultado. Têm um freio contra spam (e spam de reação nunca derruba ninguém).
+- **Notas de suspeita**: na discussão, toque num jogador para marcar 🤔 suspeito ou ✅ confio. As marcas aparecem nos cards da votação e ficam **só no seu aparelho** (o servidor nem fica sabendo).
+- **Quem está pronto**: a fileira de jogadores da discussão mostra quem já marcou "pronto".
+- **Resenha no resultado**: "Como foram as votações" (cada rodada, quem saiu, a contagem e — se os votos não forem secretos — quem votou em quem) e **Destaques da sala** (👑 Rei da sala, 🕵️ Detetive, 🎭 Mestre do disfarce, 🦹 Ladrão de vitória, 🐑 Bode expiatório, 😈 Cara de impostor).
+- **Servidor acordando**: no plano grátis o servidor dorme sem jogadores; o jogo mostra "Acordando o servidor…" com um contador e conecta sozinho quando ele volta.
+
+### Ajustes pessoais (⚙️)
+
+Ficam salvos só no aparelho de cada jogador: **tema de cores**, **efeitos sonoros**, **música de fundo** (gerada na hora, muda de clima em cada fase: calma no lobby, tensão nas pistas/votação, suspense na revelação), **vibração**, **instalar como app** e **rever o tutorial**.
+
+### Instalar como app (PWA)
+
+- **Android / Chrome / Edge**: botão **📲 Instalar como app** na tela inicial (ou em ⚙️ Ajustes).
+- **iPhone (Safari)**: Compartilhar → **Adicionar à Tela de Início** (o jogo mostra o passo a passo).
+- O app abre em tela cheia e a tela do celular **não apaga** durante a partida (Screen Wake Lock).
+- O service worker (`client/public/sw.js`) guarda só a "casca" do app. Se o servidor demorar para responder (ex.: acordando no plano grátis), o jogo abre na hora e conecta sozinho quando o servidor voltar. O Socket.IO nunca passa pelo cache.
+- Os ícones ficam em `client/public/icons` (para gerar de novo: `node scripts/make-icons.mjs`).
 
 ---
 
@@ -115,16 +143,22 @@ Estatísticas (enquanto a sala existir): pontos, vitórias, rodadas, vezes como 
 | `room:resume` | `{ clientId, code }` | reconexão |
 | `room:leave` | — | sair de vez |
 | `player:avatar` | `{ avatar }` | qualquer jogador |
-| `settings:update` | `{ category?, impostorCount?, impostorMode?, clueSeconds?, discussionSeconds? }` | host, no lobby/resultado |
+| `settings:update` | `{ categories?, impostorCount?, impostorMode?, impostorHint?, clueSeconds?, clueRounds?, discussionMode?, discussionSeconds?, votingSeconds?, anonymousVotes?, targetScore? }` | host, no lobby/resultado |
 | `game:start` / `game:playAgain` / `game:toLobby` | — | host |
+| `game:end` | — | host, durante a rodada (volta todos ao lobby, sem pontos) |
 | `card:seen` | — | participante, fase `reveal` |
 | `clue:submit` | `{ text }` | jogador da vez |
-| `chat:send` | `{ text }` | participante, fase `discussion` |
+| `chat:send` | `{ text }` | participante, fase `discussion`, só no modo "chat no app" |
 | `discussion:ready` | — | participante (alterna) |
+| `discussion:startVoting` | — | host, fase `discussion` |
 | `vote:cast` | `{ targetId }` | participante, uma vez |
+| `vote:skip` | — | participante, uma vez (pular voto) |
 | `guess:submit` | `{ text }` | só o impostor eliminado |
+| `reaction:send` | `{ emoji }` | qualquer jogador da sala (lista fixa de emojis; limite próprio, sem "strike") |
+| `host:transfer` | `{ targetId }` | host (jogador conectado) |
+| `player:kick` | `{ targetId }` | host, no lobby/resultado |
 
-Servidor → cliente: `server:meta`, `room:state`, `chat:message`, `chat:history`, `chat:reset`, `notice`, `room:closed`, `session:replaced`.
+Servidor → cliente: `server:meta`, `room:state`, `chat:message`, `chat:history`, `chat:reset`, `notice`, `reaction`, `room:closed`, `room:kicked`, `session:replaced`.
 
 ---
 
@@ -136,12 +170,13 @@ Servidor → cliente: `server:meta`, `room:state`, `chat:message`, `chat:history
 ├── Dockerfile · render.yaml
 ├── client/
 │   ├── index.html · vite.config.js · .oxlintrc.json
-│   ├── public/favicon.svg
+│   ├── public/                                # favicon, ícones, manifest e service worker (PWA)
 │   └── src/
 │       ├── main.jsx · App.jsx · index.css      # entrada, roteamento por fase, identidade visual
 │       ├── hooks/useGame.jsx                   # estado global + ações (GameProvider)
 │       ├── hooks/useCountdown.js               # timer espelhado do servidor (1 intervalo compartilhado)
-│       ├── lib/                                # socket, identidade (clientId), sons, storage, formatação
+│       ├── lib/                                # socket, identidade, sons, música, temas/ajustes, PWA, imagem de resultado
+│       ├── hooks/useWakeLock.js                # tela sempre acesa durante a partida
 │       ├── components/                         # ui, Shell (topo/toasts/modais), Timer, Chat, Leaderboard…
 │       └── screens/                            # Home, Lobby, Reveal, Clues, Discussion, Voting,
 │                                               # VoteReveal, Tie, LastChance, Result, Error
@@ -159,7 +194,9 @@ Servidor → cliente: `server:meta`, `room:state`, `chat:message`, `chat:history
 │   └── test/                                   # testes unitários e de integração (node:test)
 └── scripts/
     ├── simulate.mjs                            # simulação narrada de 6 jogadores
-    └── visual-check.mjs                        # E2E visual com Playwright (6 dispositivos)
+    ├── visual-check.mjs                        # E2E visual com Playwright (6 dispositivos)
+    ├── smoke-remote.mjs                        # robôs jogam no servidor publicado
+    └── make-icons.mjs                          # gera os ícones do app a partir do logo
 ```
 
 ---
@@ -217,8 +254,8 @@ Arquivo: `server/src/words.json`. Pode ser editado sem mexer no código (reinici
 ```
 
 - `word`: palavra secreta; `similar`: palavra parecida entregue ao impostor no modo 🎭.
-- Categorias atuais (17): Comida, Animais, Futebol, Filmes, Objetos, Lugares, Geral, Profissões, Tecnologia, Jogos, Música, Marcas, Países, Esportes, Escola, Internet, Cultura Pop — todas com **54 a 60 palavras**.
-- Para criar uma categoria nova, adicione uma chave (letras/números, começando com minúscula, ex.: `desenhos`). Ela aparece automaticamente no lobby e entra no sorteio da 🎲 Aleatória.
+- Categorias atuais (23): Comida, Animais, Futebol, Filmes, Objetos, Lugares, Geral, Profissões, Tecnologia, Jogos, Música, Marcas, Países, Esportes, Escola, Internet, Cultura Pop, Veículos, Roupas, Natureza, Brasil, Casa, Fantasia — todas com **53 a 60 palavras** (1.287 no total).
+- Para criar uma categoria nova, adicione uma chave (letras/números, começando com minúscula, ex.: `desenhos`). Ela aparece automaticamente no seletor de categorias do lobby.
 - O servidor valida o arquivo ao iniciar: entradas sem par, pares iguais ou palavras repetidas são ignoradas com um aviso no log; categorias com menos de 10 palavras válidas são puladas. Um teste garante 50+ palavras por categoria.
 - Palavras já sorteadas não se repetem na mesma sala até a categoria acabar.
 - Dica para bons pares: parecidos o bastante para o impostor conseguir blefar, diferentes o bastante para gerar suspeita (ex.: *Nescau/Toddy*, *Violão/Guitarra*, *Suíça/Suécia*).
@@ -228,18 +265,21 @@ Arquivo: `server/src/words.json`. Pode ser editado sem mexer no código (reinici
 ## Testes
 
 ```bash
-npm test            # 39 testes: unitários + integração (servidor real + clientes Socket.IO)
+npm test            # 57 testes: unitários + integração (servidor real + clientes Socket.IO)
 npm run simulate    # simulação narrada de 6 jogadores (3 rodadas completas)
 npm run visual      # build + E2E visual com Playwright em 6 dispositivos (gera ./screenshots)
 npm run lint        # oxlint no front
 npm run check       # lint + testes + build + simulação
+npm run smoke -- https://seu-jogo.onrender.com   # 6 robôs jogam uma rodada no servidor publicado
 ```
 
 Os testes de integração rodam com `TIMER_SCALE=0.05` (todos os timers 20x mais rápidos) e cobrem:
 
 - **Fluxo completo com 6 jogadores**: lobby → carta → pistas → discussão → votação → resultado → placar → jogar novamente
 - **Pontuação**: grupo acerta (+2 cada), impostor escapa (+3), impostor eliminado que acerta a palavra (+2), estatísticas
-- **Empate**: três votações empatadas seguidas (nova rodada de pistas a cada empate) e a regra de desempate
+- **Ninguém saiu**: "pular" vencendo, empate com o "pular", ninguém votando e **5 votações seguidas** sem limite de rodadas até o grupo acertar
+- **Jogo em chamada**: chat desligado no modo chamada (padrão), discussão sem tempo (sem cronômetro, host abre a votação, a sala não expira enquanto o grupo conversa) e host encerrando a rodada
+- **Social**: reações (só para a própria sala, só emojis da lista, spam limitado sem desconectar), host removendo jogador (não volta nem por `resume` nem por `join`), passando a coroa (inclusive no meio da rodada) e a estatística de "bode expiatório"
 - **Reconexão** no lobby, pistas, discussão, votação e resultado (mesmo id, papel, palavra, pontos e histórico do chat; sem duplicar), outra aba assumindo a sessão, saída definitiva
 - **Host**: queda com transferência, host que volta não recupera o cargo, refresh rápido não troca, saída imediata
 - **Validações**: sala cheia, inexistente, código inválido, apelido duplicado (acentos/maiúsculas), menos de 3 jogadores, eventos e payloads inválidos, não-host, auto-voto, voto duplo, pista fora da vez, pista "em nome de outro"
@@ -247,9 +287,10 @@ Os testes de integração rodam com `TIMER_SCALE=0.05` (todos os timers 20x mais
 - **Anti-abuso**: rate limit do chat, mensagem grande demais, pacote > 4 KB, flood de eventos, limite de conexões por IP
 - **Timers**: vez sem pista é pulada, votação encerra no tempo; **expiração** de sala inativa
 - **Carga**: 20 salas jogando simultaneamente
+- **Configurações v3**: várias categorias, ajuda do impostor (categoria escondida no difícil, formato da palavra no fácil — só para o impostor), 2 voltas de pistas, votos secretos (ninguém recebe quem votou em quem) e partida até X pontos com campeão
 - **Regras de texto**: `pizza/Pizza/pizzas/PIZZA/pizzA/piza/pizzaria` bloqueadas, `forno/queijo/Itália` aceitas, `bolacha` não é bloqueada por `bola`, etc.
 
-O teste visual (`scripts/visual-check.mjs`) joga uma partida inteira pela interface com iPhone SE, iPhone Pro Max, Android, Android pequeno, iPad e desktop; tira ~46 screenshots e falha se encontrar erro no console, scroll horizontal ou alvo de toque menor que 40px. Se o Playwright não tiver navegador, rode `npx playwright install chromium` (ou defina `CHROMIUM_PATH`).
+O teste visual (`scripts/visual-check.mjs`) joga uma partida inteira pela interface com iPhone SE, iPhone Pro Max, Android, Android pequeno, iPad e desktop — **cada aparelho com um tema diferente** —, passa pelo tutorial, ajustes, seletor de categorias, "mais opções", votos secretos, a imagem de compartilhar, o aviso de servidor acordando, o QR code, o host removendo um visitante e passando a coroa, e uma partida em modo chamada (notas de suspeita, reações, discussão sem tempo, host abrindo a votação, "pular" vencendo, empate com o "pular" e host encerrando a rodada); tira ~69 screenshots e falha se encontrar erro no console, scroll horizontal ou alvo de toque menor que 40px. Se o Playwright não tiver navegador, rode `npx playwright install chromium` (ou defina `CHROMIUM_PATH`).
 
 ---
 
@@ -315,13 +356,16 @@ Front estático (Vercel/Netlify) com `VITE_SERVER_URL=https://seu-back.onrender.
 
 ## Decisões de design
 
-- **Votação 45s** e **última chance 20s** são fixos; pistas e discussão são configuráveis pelo host.
-- **Regra de desempate**: até 3 votações; se a 3ª empatar (ou ninguém votar), o impostor escapa (+3).
+- **Última chance 20s** é fixa; pistas, discussão e votação são configuráveis pelo host.
+- **Pular voto e empates** (regra estilo "Among Us"): só sai quem tiver mais votos que todo mundo *e* que o "pular". Empate no topo, "pular" vencendo ou ninguém votando = ninguém sai e começa outra rodada, sem limite. Quem não vota a tempo simplesmente não conta.
+- **Discussão sem tempo**: sem cronômetro; enquanto houver alguém conectado nessa fase, a sala não conta como inativa (o grupo pode estar conversando na chamada).
 - **2 impostores** só com 6 jogadores. Eliminar um deles encerra a rodada com a pontuação normal; se o eliminado acertar a palavra, os dois impostores ganham +2. Impostores não sabem quem é o outro.
 - **Modo palavra parecida**: o impostor sabe que é o impostor e recebe a palavra parecida para blefar. A pista dele não pode ser a própria palavra; a palavra secreta nunca é usada para validar a pista do impostor (senão o bloqueio revelaria a palavra).
 - **Pistas repetidas** na mesma rodada são recusadas, para forçar pistas novas.
-- **Chat só na discussão**, apenas para quem está na rodada.
+- **Chat só na discussão**, apenas para quem está na rodada, e só no modo "💬 chat no app" (no modo "📞 em chamada" o servidor recusa mensagens).
 - **Quem entra no meio da partida** (ou estava desconectado quando ela começou) assiste como espectador e joga a partir da próxima rodada.
 - **Saídas no meio da rodada**: se um inocente sai, o jogo segue; se o impostor sai (ou sobram menos de 3), a rodada é cancelada sem pontos e todos voltam ao lobby.
 - **Sala cheia**: se houver alguém desconectado há mais de 2 minutos no lobby, a vaga é liberada para quem está entrando.
 - **Espaço**: salas vazias são apagadas na hora; inativas por 30 min são removidas pelo "varredor".
+- **Remover jogador** só no lobby/resultado (no meio da rodada atrapalharia o jogo); o `clientId` removido fica bloqueado naquela sala.
+- **Build**: as bibliotecas ficam num arquivo `vendor` separado do código do jogo, então numa atualização o navegador baixa de novo só a parte que mudou; o QR code é carregado só quando alguém abre o QR.

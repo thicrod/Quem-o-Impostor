@@ -4,8 +4,8 @@
 
 import { randomBytes, randomInt } from 'node:crypto';
 import {
-  AVATARS, DEFAULT_SETTINGS, DURATIONS, LIMITS, RANDOM_CATEGORY, SCORING,
-  SEAT_COLORS, SETTINGS_OPTIONS, scaled,
+  AVATARS, DEFAULT_SETTINGS, DURATIONS, LIMITS, MAX_CATEGORIES_SELECTED, RANDOM_CATEGORY, SCORING,
+  SEAT_COLORS, SETTINGS_OPTIONS, SKIP_VOTE, scaled,
 } from './config.js';
 import {
   isCorrectGuess, nicknameKey, sanitizeText, validateClue, validateNickname,
@@ -48,8 +48,17 @@ function shuffle(list) {
 }
 
 const emptyStats = () => ({
-  wins: 0, rounds: 0, timesImpostor: 0, impostorsFound: 0, escapes: 0, steals: 0,
+  wins: 0, rounds: 0, timesImpostor: 0, impostorsFound: 0, escapes: 0, steals: 0, matchesWon: 0,
+  framed: 0, // inocente eliminado pelo grupo ("bode expiatório")
 });
+
+/** "Pão de queijo" -> [3, 2, 6] (letras de cada palavra). Ajuda "fácil" do impostor. */
+function wordShape(word) {
+  return String(word)
+    .split(/[\s-]+/)
+    .map((part) => part.replace(/[^\p{L}\p{N}]/gu, '').length)
+    .filter((n) => n > 0);
+}
 
 export class Room {
   /**
@@ -62,13 +71,14 @@ export class Room {
     this.hooks = hooks;
     this.players = new Map();
     this.hostId = null;
-    this.settings = { ...DEFAULT_SETTINGS };
-    if (!wordBank.has(this.settings.category)) this.settings.category = RANDOM_CATEGORY;
+    this.settings = { ...DEFAULT_SETTINGS, categories: wordBank.normalizeKeys(DEFAULT_SETTINGS.categories) };
+    this.matchOver = false; // alguém atingiu a pontuação-alvo
     this.phase = PHASES.LOBBY;
     this.game = null;
     this.gameCounter = 0;
     this.joinCounter = 0;
     this.usedWords = new Set();
+    this.banned = new Set(); // clientIds removidos pelo host (não podem voltar)
     this.chat = [];
     this.timer = null;
     this.deadline = null;
@@ -195,6 +205,9 @@ export class Room {
     if (this.findByClientId(clientId)) {
       throw new GameError('ALREADY_IN_ROOM', 'Você já está nesta sala.');
     }
+    if (this.banned.has(clientId)) {
+      throw new GameError('KICKED', 'O host removeu você desta sala.');
+    }
     const nick = validateNickname(nickname);
     if (!nick.ok) throw new GameError(nick.code, nick.message);
     if (this.players.size >= LIMITS.MAX_PLAYERS) this.evictStalePlayer();
@@ -289,6 +302,7 @@ export class Room {
     if (!player) return;
     this.players.delete(playerId);
     if (reason === 'leave') this.notice('leave', `${player.avatar} ${player.nickname} saiu da sala`);
+    if (reason === 'kick') this.notice('leave', `🚫 ${player.avatar} ${player.nickname} foi removido pelo host`);
     if (this.players.size === 0) {
       this.hooks.onEmpty?.(this);
       return;
@@ -312,7 +326,43 @@ export class Room {
     this.broadcast();
   }
 
+  /** Reação rápida (emoji) que aparece na tela de todos. */
+  react(playerId, emoji) {
+    this.requirePlayer(playerId);
+    this.touch();
+    this.hooks.onEvent?.(this, 'reaction', { id: newId(), playerId, emoji });
+  }
+
   // ───────────────────────── host ─────────────────────────
+
+  /** Host remove um jogador (só no lobby/resultado). Ele não consegue voltar. */
+  kick(hostId, targetId) {
+    this.requireHost(hostId);
+    this.requirePhase(PHASES.LOBBY, PHASES.RESULT);
+    if (targetId === hostId) throw new GameError('BAD_TARGET', 'Você não pode remover a si mesmo.');
+    const target = this.players.get(targetId);
+    if (!target) throw new GameError('BAD_TARGET', 'Esse jogador não está na sala.');
+    this.banned.add(target.clientId);
+    this.touch();
+    this.removePlayer(targetId, { reason: 'kick' });
+    return target;
+  }
+
+  /** Host passa a coroa para outro jogador conectado. */
+  makeHost(hostId, targetId) {
+    this.requireHost(hostId);
+    const target = this.players.get(targetId);
+    if (!target || targetId === hostId) throw new GameError('BAD_TARGET', 'Escolha outro jogador da sala.');
+    if (!target.connected) throw new GameError('BAD_TARGET', 'Esse jogador está desconectado.');
+    this.hostId = targetId;
+    if (this.hostTimer) {
+      clearTimeout(this.hostTimer);
+      this.hostTimer = null;
+    }
+    this.touch();
+    this.notice('host', `👑 ${target.nickname} agora é o host`);
+    this.broadcast();
+  }
 
   scheduleHostTransfer() {
     if (this.hostTimer) clearTimeout(this.hostTimer);
@@ -357,11 +407,19 @@ export class Room {
     this.requireHost(playerId);
     this.requirePhase(PHASES.LOBBY, PHASES.RESULT);
     const next = { ...this.settings };
+    // Compatibilidade: `category` (uma chave ou "aleatoria" = todas).
     if (patch.category !== undefined) {
       if (!this.wordBank.has(patch.category)) throw new GameError('BAD_SETTING', 'Categoria inválida.');
-      next.category = patch.category;
+      next.categories = patch.category === RANDOM_CATEGORY ? this.wordBank.keys() : [patch.category];
     }
-    for (const field of ['impostorCount', 'impostorMode', 'clueSeconds', 'discussionSeconds']) {
+    if (patch.categories !== undefined) {
+      const keys = [...new Set(patch.categories)];
+      if (keys.length === 0 || keys.length > MAX_CATEGORIES_SELECTED || !keys.every((k) => this.wordBank.categories.has(k))) {
+        throw new GameError('BAD_SETTING', 'Escolha pelo menos uma categoria válida.');
+      }
+      next.categories = keys;
+    }
+    for (const field of Object.keys(SETTINGS_OPTIONS)) {
       if (patch[field] === undefined) continue;
       if (!SETTINGS_OPTIONS[field].includes(patch[field])) {
         throw new GameError('BAD_SETTING', 'Configuração inválida.');
@@ -395,17 +453,31 @@ export class Room {
         `São necessários pelo menos ${LIMITS.MIN_PLAYERS} jogadores conectados (falta${missing > 1 ? 'm' : ''} ${missing}).`,
       );
     }
-    const impostorCount = this.settings.impostorCount === 2 && participants.length >= LIMITS.MAX_PLAYERS ? 2 : 1;
-    const pick = this.wordBank.pick(this.settings.category, this.usedWords, secureRandom);
+    // Nova partida depois de um campeão: zera o placar (as estatísticas continuam).
+    if (this.matchOver) {
+      for (const p of this.players.values()) p.score = 0;
+      this.matchOver = false;
+    }
+    const s = this.settings;
+    const impostorCount = s.impostorCount === 2 && participants.length >= LIMITS.MAX_PLAYERS ? 2 : 1;
+    const pick = this.wordBank.pick(s.categories, this.usedWords, secureRandom);
     const impostors = shuffle(participants).slice(0, impostorCount).map((p) => p.id);
     this.gameCounter += 1;
     this.game = {
       number: this.gameCounter,
       category: pick.category,
-      randomCategory: this.settings.category === RANDOM_CATEGORY,
+      randomCategory: this.wordBank.normalizeKeys(s.categories).length > 1,
       word: pick.word,
       similar: pick.similar,
-      mode: this.settings.impostorMode,
+      mode: s.impostorMode,
+      impostorHint: s.impostorHint,
+      anonymousVotes: s.anonymousVotes,
+      clueRounds: s.clueRounds,
+      discussionMode: s.discussionMode,
+      discussionSeconds: s.discussionSeconds,
+      votingSeconds: s.votingSeconds,
+      pass: 0, // voltas de pistas no jogo todo
+      passInRound: 0, // voltas de pistas nesta votação
       impostorIds: new Set(impostors),
       participants: participants.map((p) => p.id),
       roster: Object.fromEntries(participants.map((p) => [p.id, {
@@ -445,6 +517,8 @@ export class Room {
   startClueRound() {
     const g = this.game;
     this.phase = PHASES.CLUES;
+    g.pass += 1;
+    g.passInRound += 1;
     g.turnOrder = shuffle(g.participants);
     g.turnIndex = -1;
     g.intro = true;
@@ -458,7 +532,8 @@ export class Room {
     g.intro = false;
     g.turnIndex += 1;
     if (g.turnIndex >= g.turnOrder.length) {
-      this.startDiscussion();
+      if (g.passInRound < g.clueRounds) this.startClueRound();
+      else this.startDiscussion();
       return;
     }
     const current = this.players.get(g.turnOrder[g.turnIndex]);
@@ -472,7 +547,7 @@ export class Room {
   skipTurn() {
     const g = this.game;
     const playerId = g.turnOrder[g.turnIndex];
-    if (playerId) g.clues.push({ round: g.round, playerId, text: null, skipped: true });
+    if (playerId) g.clues.push({ round: g.round, pass: g.pass, playerId, text: null, skipped: true });
     this.nextTurn();
   }
 
@@ -487,7 +562,7 @@ export class Room {
     const usedClues = g.clues.filter((c) => c.round === g.round && c.text).map((c) => c.text);
     const check = validateClue(rawText, { protectedWords: card?.word ? [card.word] : [], usedClues });
     if (!check.ok) throw new GameError(check.code, check.message);
-    g.clues.push({ round: g.round, playerId, text: check.clue, skipped: false });
+    g.clues.push({ round: g.round, pass: g.pass, playerId, text: check.clue, skipped: false });
     this.touch();
     this.nextTurn();
   }
@@ -495,8 +570,26 @@ export class Room {
   startDiscussion() {
     this.phase = PHASES.DISCUSSION;
     this.game.ready = new Set();
-    this.setTimer(this.settings.discussionSeconds * 1000, () => this.startVoting());
+    // 0 = sem limite: a votação começa quando todos ficam prontos ou o host decide.
+    if (this.game.discussionSeconds > 0) {
+      this.setTimer(this.game.discussionSeconds * 1000, () => this.startVoting());
+    } else {
+      this.clearTimer();
+    }
     this.broadcast();
+  }
+
+  /** Host encerra a discussão e abre a votação para todos. */
+  forceVoting(playerId) {
+    this.requireHost(playerId);
+    this.requirePhase(PHASES.DISCUSSION);
+    this.touch();
+    this.startVoting();
+  }
+
+  /** Discussão sem tempo com alguém online: a sala não conta como inativa. */
+  isOpenDiscussion() {
+    return this.phase === PHASES.DISCUSSION && !this.deadline && this.connectedParticipants().length > 0;
   }
 
   toggleReady(playerId) {
@@ -513,6 +606,9 @@ export class Room {
   sendChat(playerId, rawText) {
     this.requirePhase(PHASES.DISCUSSION);
     this.requireParticipant(playerId);
+    if (this.game.discussionMode !== 'chat') {
+      throw new GameError('CHAT_OFF', 'O chat está desligado nesta sala: conversem na chamada!');
+    }
     const text = sanitizeText(rawText, LIMITS.CHAT_MAX);
     if (!text) throw new GameError('CHAT_EMPTY', 'Mensagem vazia.');
     const message = { id: newId(), playerId, text, at: Date.now() };
@@ -526,7 +622,7 @@ export class Room {
   startVoting() {
     this.phase = PHASES.VOTING;
     this.game.votes = new Map();
-    this.setTimer(DURATIONS.VOTING, () => this.resolveVotes());
+    this.setTimer(this.game.votingSeconds * 1000, () => this.resolveVotes());
     this.broadcast();
   }
 
@@ -535,9 +631,11 @@ export class Room {
     this.requireParticipant(playerId);
     const g = this.game;
     if (g.votes.has(playerId)) throw new GameError('ALREADY_VOTED', 'Seu voto já foi confirmado.');
-    if (targetId === playerId) throw new GameError('SELF_VOTE', 'Você não pode votar em si mesmo.');
-    if (!g.participants.includes(targetId) || !this.players.has(targetId)) {
-      throw new GameError('BAD_TARGET', 'Esse jogador não está na rodada.');
+    if (targetId !== SKIP_VOTE) {
+      if (targetId === playerId) throw new GameError('SELF_VOTE', 'Você não pode votar em si mesmo.');
+      if (!g.participants.includes(targetId) || !this.players.has(targetId)) {
+        throw new GameError('BAD_TARGET', 'Esse jogador não está na rodada.');
+      }
     }
     g.votes.set(playerId, targetId);
     this.touch();
@@ -545,27 +643,47 @@ export class Room {
     this.broadcast();
   }
 
+  /**
+   * Apura os votos (regra "Among Us"):
+   * - um jogador com mais votos que todos (e que o "pular") é eliminado;
+   * - "pular" com mais votos, empate no topo (inclusive com o "pular") ou
+   *   nenhum voto => ninguém sai e começa outra rodada de pistas (sem limite).
+   */
   resolveVotes() {
     const g = this.game;
     const tallies = {};
     for (const id of g.participants) tallies[id] = 0;
     const votes = [];
+    const skips = [];
     for (const [voterId, targetId] of g.votes) {
-      if (tallies[targetId] === undefined) continue;
-      tallies[targetId] += 1;
-      votes.push({ voterId, targetId });
+      if (targetId === SKIP_VOTE) {
+        skips.push(voterId);
+      } else if (tallies[targetId] !== undefined) {
+        tallies[targetId] += 1;
+        votes.push({ voterId, targetId });
+      }
     }
-    const max = Math.max(0, ...Object.values(tallies));
+    const skipCount = skips.length;
+    const max = Math.max(skipCount, ...Object.values(tallies));
     const leaders = max > 0 ? Object.keys(tallies).filter((id) => tallies[id] === max) : [];
-    const eliminatedId = leaders.length === 1 ? leaders[0] : null;
+    const skipLeads = max > 0 && skipCount === max;
+    const eliminatedId = leaders.length === 1 && !skipLeads ? leaders[0] : null;
+    let verdict = 'eliminated';
+    if (!eliminatedId) {
+      if (max === 0) verdict = 'noVotes';
+      else if (skipLeads && leaders.length === 0) verdict = 'skipped';
+      else verdict = 'tie';
+    }
     const record = {
       round: g.round,
       votes,
+      skips,
+      skipCount,
       tallies,
       eliminatedId,
-      tie: !eliminatedId,
-      tiedIds: eliminatedId ? [] : leaders,
-      finalRound: g.round >= LIMITS.MAX_VOTE_ROUNDS,
+      verdict,
+      tie: verdict === 'tie',
+      tiedIds: verdict === 'tie' ? leaders : [],
     };
     g.voteHistory.push(record);
     this.phase = PHASES.VOTE_REVEAL;
@@ -586,19 +704,15 @@ export class Room {
       }
       return;
     }
-    if (g.round < LIMITS.MAX_VOTE_ROUNDS) {
-      this.phase = PHASES.TIE;
-      g.tiedIds = last.tiedIds;
-      this.setTimer(DURATIONS.TIE, () => {
-        g.round += 1;
-        this.startClueRound();
-      });
-      this.broadcast();
-      return;
-    }
-    // Regra de desempate: 3º empate seguido = o grupo não chegou a um consenso
-    // e o impostor escapa.
-    this.finish('escaped', 'tie');
+    // Ninguém saiu: mais uma rodada de pistas + discussão + votação (sem limite).
+    this.phase = PHASES.TIE;
+    g.tiedIds = last.tiedIds;
+    this.setTimer(DURATIONS.TIE, () => {
+      g.round += 1;
+      g.passInRound = 0;
+      this.startClueRound();
+    });
+    this.broadcast();
   }
 
   startLastChance(playerId) {
@@ -626,6 +740,7 @@ export class Room {
     const impostorsWon = outcome !== 'caught';
     const pointsDelta = {};
     const finalVotes = new Map(g.voteHistory.at(-1)?.votes.map((v) => [v.voterId, v.targetId]) ?? []);
+    const eliminatedId = g.voteHistory.at(-1)?.eliminatedId ?? null;
     for (const id of g.participants) {
       const p = this.players.get(id);
       if (!p) continue;
@@ -644,10 +759,25 @@ export class Room {
       } else if (g.impostorIds.has(finalVotes.get(id))) {
         p.stats.impostorsFound += 1;
       }
+      if (!isImpostor && id === eliminatedId) p.stats.framed += 1;
       if (isImpostor === impostorsWon) p.stats.wins += 1;
+    }
+    // Pontuação-alvo: quem chegar primeiro vence a partida (empate = todos vencem).
+    let champions = [];
+    const target = this.settings.targetScore;
+    if (target > 0) {
+      const top = Math.max(0, ...[...this.players.values()].map((p) => p.score));
+      if (top >= target) {
+        champions = [...this.players.values()].filter((p) => p.score === top).map((p) => p.id);
+        champions.forEach((id) => { this.players.get(id).stats.matchesWon += 1; });
+        this.matchOver = true;
+      }
     }
     const last = g.voteHistory.at(-1);
     g.result = {
+      matchOver: champions.length > 0,
+      champions,
+      targetScore: target,
       outcome,
       reason,
       winner: impostorsWon ? 'impostors' : 'group',
@@ -674,8 +804,21 @@ export class Room {
     this.clearTimer();
     this.phase = PHASES.LOBBY;
     this.game = null;
+    if (this.matchOver) {
+      for (const p of this.players.values()) p.score = 0;
+      this.matchOver = false;
+    }
     this.touch();
     this.broadcast();
+  }
+
+  /** Host encerra a rodada em andamento (sem pontos) e todos voltam ao lobby. */
+  endRound(playerId) {
+    this.requireHost(playerId);
+    if (!this.inGame) throw new GameError('WRONG_PHASE', 'Não há rodada em andamento.');
+    this.touch();
+    const host = this.players.get(playerId);
+    this.abortGame(`${host.avatar} ${host.nickname} (host) encerrou a rodada. Voltando ao lobby.`);
   }
 
   abortGame(message) {
@@ -746,10 +889,23 @@ export class Room {
     const g = this.game;
     if (!g || !g.participants.includes(playerId)) return null;
     const isImpostor = g.impostorIds.has(playerId);
-    return {
+    const card = {
       role: isImpostor ? 'impostor' : 'innocent',
       word: isImpostor ? (g.mode === 'similar' ? g.similar : null) : g.word,
     };
+    if (isImpostor) {
+      // Nível de ajuda do impostor (só ele recebe isso).
+      card.hint = { level: g.impostorHint };
+      if (g.impostorHint === 'easy' && g.mode === 'noWord') card.hint.shape = wordShape(g.word);
+    }
+    return card;
+  }
+
+  /** O impostor está no modo "difícil" e ainda não pode saber a categoria? */
+  hidesCategoryFrom(playerId) {
+    const g = this.game;
+    return Boolean(g && this.phase !== PHASES.RESULT && g.impostorHint === 'hard'
+      && g.mode === 'noWord' && g.impostorIds.has(playerId));
   }
 
   timerView() {
@@ -770,18 +926,27 @@ export class Room {
     };
   }
 
-  publicGame() {
+  publicGame(viewerId) {
     const g = this.game;
     if (!g) return null;
     const revealed = this.phase === PHASES.RESULT;
+    const hideCategory = this.hidesCategoryFrom(viewerId);
     return {
       number: g.number,
-      category: g.category,
+      category: hideCategory ? { key: 'secreta', label: 'Categoria secreta', emoji: '❓' } : g.category,
+      categoryHidden: hideCategory,
       randomCategory: g.randomCategory,
       mode: g.mode,
+      impostorHint: g.impostorHint,
+      anonymousVotes: g.anonymousVotes,
+      clueRounds: g.clueRounds,
+      discussionMode: g.discussionMode,
+      discussionSeconds: g.discussionSeconds,
+      pass: g.pass,
+      passInRound: g.passInRound,
+      votingSeconds: g.votingSeconds,
       impostorCount: g.impostorIds.size,
       round: g.round,
-      maxRounds: LIMITS.MAX_VOTE_ROUNDS,
       participants: [...g.participants],
       roster: g.roster,
       seenIds: [...g.seen],
@@ -792,8 +957,14 @@ export class Room {
       clues: g.clues.map((c) => ({ ...c })),
       readyIds: [...g.ready],
       votedIds: this.phase === PHASES.VOTING ? [...g.votes.keys()] : [],
-      // Votos individuais só aparecem depois de revelados (fase voteReveal em diante).
-      voteHistory: g.voteHistory.map((v) => ({ ...v, votes: [...v.votes], tallies: { ...v.tallies } })),
+      // Votos individuais só aparecem depois de revelados (fase voteReveal em diante)
+      // e nunca aparecem com "votos anônimos" (só a contagem).
+      voteHistory: g.voteHistory.map((v) => ({
+        ...v,
+        votes: g.anonymousVotes ? [] : [...v.votes],
+        skips: g.anonymousVotes ? [] : [...v.skips],
+        tallies: { ...v.tallies },
+      })),
       tiedIds: [...g.tiedIds],
       lastChanceId: g.lastChanceId,
       result: revealed ? g.result : null,
@@ -810,7 +981,7 @@ export class Room {
       settings: { ...this.settings },
       players: this.orderedPlayers().map((p) => this.publicPlayer(p)),
       timer: this.timerView(),
-      game: this.publicGame(),
+      game: this.publicGame(playerId),
       you: me ? {
         id: me.id,
         isHost: me.id === this.hostId,

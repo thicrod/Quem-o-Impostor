@@ -30,10 +30,15 @@ function RoundIntro({ game, playerInfo }) {
         transition={{ delay: 0.25 }}
         className="mt-4"
       >
-        <Chip tone="hot" className="px-4 py-1 text-base">Rodada {game.round}/{game.maxRounds}</Chip>
+        <Chip tone="hot" className="px-4 py-1 text-base">Rodada {game.round}</Chip>
+        {game.clueRounds > 1 && (
+          <Chip tone="sky" className="ml-2 px-4 py-1 text-base">Volta {game.passInRound}/{game.clueRounds}</Chip>
+        )}
       </motion.div>
-      {game.round > 1 && (
-        <p className="mt-3 max-w-xs text-sm font-bold text-sun-400">⚡ Desempate: todo mundo dá mais uma pista!</p>
+      {game.passInRound > 1 ? (
+        <p className="mt-3 max-w-xs text-sm font-bold text-sky-400">🔁 {game.passInRound}ª volta: cada um dá mais uma pista!</p>
+      ) : game.round > 1 && (
+        <p className="mt-3 max-w-xs text-sm font-bold text-sun-400">🔁 Ninguém saiu: todo mundo dá mais uma pista!</p>
       )}
       <p className="mt-6 text-xs font-extrabold tracking-[0.2em] text-ink-300 uppercase">Ordem sorteada</p>
       <ol className="mt-3 flex flex-wrap justify-center gap-3">
@@ -58,7 +63,7 @@ function RoundIntro({ game, playerInfo }) {
 }
 
 function TurnOrderStrip({ game, playerInfo, meId }) {
-  const done = new Set(game.clues.filter((c) => c.round === game.round).map((c) => c.playerId));
+  const done = new Set(game.clues.filter((c) => (c.pass ?? c.round) === game.pass).map((c) => c.playerId));
   return (
     <ol className="no-scrollbar -mx-4 flex gap-3 overflow-x-auto px-4 py-2" aria-label="Ordem das pistas">
       {game.turnOrder.map((id, i) => {
@@ -164,7 +169,11 @@ function ClueInput({ card, onSubmit, maxLength }) {
         }}
       />
       <p id="clue-help" role={shown ? 'alert' : undefined} className={cx('min-h-5 text-center text-sm font-bold', shown ? 'text-bad-400' : 'text-ink-300')}>
-        {shown ? `⚠️ ${shown}` : 'Uma palavra só. Nada de usar a palavra secreta!'}
+        {shown
+          ? `⚠️ ${shown}`
+          : card?.role === 'impostor'
+            ? '🤫 Impostor: uma palavra vaga, mas que pareça certeira!'
+            : 'Uma palavra só. Nada de usar a palavra secreta!'}
       </p>
       <Button type="submit" size="xl" block loading={sending} disabled={!text.trim()}>
         Enviar pista ➤
@@ -180,7 +189,7 @@ export default function CluesScreen() {
   const current = playerInfo(game.currentTurnId);
   const myTurn = game.currentTurnId === you.id;
   const myPosition = game.turnOrder.indexOf(you.id);
-  const alreadySent = game.clues.some((c) => c.round === game.round && c.playerId === you.id);
+  const alreadySent = game.clues.some((c) => (c.pass ?? c.round) === game.pass && c.playerId === you.id);
   const cluesCount = game.clues.length;
   const prevCount = useRef(cluesCount);
 
@@ -204,7 +213,10 @@ export default function CluesScreen() {
         <motion.div key="main" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid gap-4 pb-8">
           <div className="flex items-center justify-between">
             <h1 className="font-display text-3xl text-white text-outline">RODADA DE PISTAS</h1>
-            <Chip tone="hot">Rodada {game.round}/{game.maxRounds}</Chip>
+            <div className="flex flex-col items-end gap-1">
+              <Chip tone="hot">Rodada {game.round}</Chip>
+              {game.clueRounds > 1 && <Chip tone="sky">Volta {game.passInRound}/{game.clueRounds}</Chip>}
+            </div>
           </div>
 
           {!you.isParticipant && <SpectatorBanner />}
@@ -244,7 +256,7 @@ export default function CluesScreen() {
           {myTurn ? (
             <Panel strong>
               <ClueInput
-                key={`${game.round}-${game.turnIndex}`}
+                key={`${game.pass}-${game.turnIndex}`}
                 card={you.card}
                 maxLength={state.meta?.limits.clueMax ?? 24}
                 onSubmit={actions.submitClue}

@@ -21,19 +21,24 @@
   --color-hot-400: #ff6fb5;
   --color-hot-500: #ff3d8b;
   --color-hot-600: #e11d74;
+  --color-hot-700: #8f0c47;
   --color-sun-400: #ffb547;
   --color-sun-500: #ff9f1a;
+  --color-sun-700: #a86200;
   --color-sky-400: #3ee0ff;
   --color-sky-500: #14c8f0;
+  --color-sky-700: #0b7f9c;
   --color-good-400: #4ef0a3;
   --color-good-500: #1fd88a;
+  --color-good-700: #0f8a55;
   --color-bad-400: #ff6b7a;
   --color-bad-500: #ff3b52;
+  --color-bad-700: #a1122a;
   --color-grape-400: #b18cff;
   --color-grape-500: #8b5cf6;
 
-  --shadow-glow-hot: 0 10px 30px -8px rgb(255 61 139 / 0.55);
-  --shadow-glow-sky: 0 10px 30px -8px rgb(20 200 240 / 0.45);
+  --shadow-glow-hot: 0 10px 30px -8px color-mix(in srgb, var(--color-hot-500) 55%, transparent);
+  --shadow-glow-sky: 0 10px 30px -8px color-mix(in srgb, var(--color-sky-500) 45%, transparent);
   --shadow-glow-good: 0 10px 30px -8px rgb(31 216 138 / 0.5);
   --shadow-glow-bad: 0 10px 30px -8px rgb(255 59 82 / 0.55);
   --shadow-card: 0 18px 40px -18px rgb(0 0 0 / 0.75), inset 0 1px 0 rgb(255 255 255 / 0.06);
@@ -93,7 +98,7 @@
     outline-offset: 3px;
     border-radius: 12px;
   }
-  ::selection { background: rgb(255 61 139 / 0.4); }
+  ::selection { background: color-mix(in srgb, var(--color-hot-500) 40%, transparent); }
   input::placeholder { color: rgb(201 195 239 / 0.55); }
 }
 
@@ -106,8 +111,9 @@
     overflow: hidden;
     pointer-events: none;
     background:
-      radial-gradient(1200px 600px at 50% -10%, rgb(139 92 246 / 0.22), transparent 60%),
+      radial-gradient(1200px 600px at 50% -10%, color-mix(in srgb, var(--color-grape-500) 22%, transparent), transparent 60%),
       linear-gradient(180deg, var(--color-ink-900), var(--color-ink-950) 70%);
+    transition: background 0.4s;
   }
   .app-bg::before,
   .app-bg::after {
@@ -120,8 +126,8 @@
     opacity: 0.28;
     animation: blob 18s ease-in-out infinite;
   }
-  .app-bg::before { background: #ff3d8b; top: -35vmax; left: -30vmax; }
-  .app-bg::after { background: #14c8f0; bottom: -40vmax; right: -30vmax; animation-delay: -9s; opacity: 0.2; }
+  .app-bg::before { background: var(--color-hot-500); top: -35vmax; left: -30vmax; }
+  .app-bg::after { background: var(--color-sky-500); bottom: -40vmax; right: -30vmax; animation-delay: -9s; opacity: 0.2; }
 
   .glass {
     background: linear-gradient(180deg, rgb(255 255 255 / 0.075), rgb(255 255 255 / 0.035));
@@ -137,16 +143,16 @@
   }
 
   .title-gradient {
-    background: linear-gradient(95deg, #fff 0%, #ffd1e8 30%, #ff6fb5 60%, #ffb547 100%);
+    background: linear-gradient(95deg, #fff 0%, color-mix(in srgb, var(--color-hot-400) 30%, white) 30%, var(--color-hot-400) 60%, var(--color-sun-400) 100%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
     /* text-shadow "vazaria" pelo texto transparente; drop-shadow respeita o recorte */
     text-shadow: none;
-    filter: drop-shadow(0 3px 0 rgb(0 0 0 / 0.35)) drop-shadow(0 8px 18px rgb(255 61 139 / 0.35));
+    filter: drop-shadow(0 3px 0 rgb(0 0 0 / 0.35)) drop-shadow(0 8px 18px color-mix(in srgb, var(--color-hot-500) 35%, transparent));
   }
   .text-outline {
-    text-shadow: 0 3px 0 rgb(0 0 0 / 0.35), 0 8px 24px rgb(255 61 139 / 0.35);
+    text-shadow: 0 3px 0 rgb(0 0 0 / 0.35), 0 8px 24px color-mix(in srgb, var(--color-hot-500) 35%, transparent);
   }
 
   .field {
@@ -164,7 +170,7 @@
   .field:focus {
     outline: none;
     border-color: var(--color-sky-400);
-    box-shadow: 0 0 0 4px rgb(62 224 255 / 0.18);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-sky-400) 18%, transparent);
     background: rgb(7 5 26 / 0.85);
   }
   .field[aria-invalid="true"] {
@@ -192,6 +198,68 @@
   .perspective { perspective: 1200px; }
   .preserve-3d { transform-style: preserve-3d; }
   .backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+}
+
+
+/* ───────── Temas visuais (escolha pessoal, salva no aparelho) ─────────
+   Só as cores de "marca" e do fundo mudam; verde = inocente e vermelho =
+   impostor continuam iguais em todos os temas. */
+html[data-theme="sunset"] {
+  --color-hot-400: #ff8a5c; --color-hot-500: #ff6a3d; --color-hot-600: #e2461d; --color-hot-700: #8f2a0c;
+  --color-sky-400: #ff8fc2; --color-sky-500: #ff5fa2; --color-sky-700: #9c1a57;
+  --color-grape-400: #ffb37a; --color-grape-500: #ff7a45;
+  --color-ink-950: #140814; --color-ink-900: #1f0b1c; --color-ink-850: #281026; --color-ink-800: #311430;
+  --color-ink-700: #47203f; --color-ink-600: #5e2c53; --color-ink-500: #7b3d6a;
+  --color-ink-300: #d6a7c5; --color-ink-200: #eccadc; --color-ink-100: #fbe9f1;
+}
+html[data-theme="ocean"] {
+  --color-hot-400: #2dd4bf; --color-hot-500: #14b8a6; --color-hot-600: #0d9488; --color-hot-700: #0a5c55;
+  --color-sky-400: #7cb8ff; --color-sky-500: #4f96ff; --color-sky-700: #1d4ed8;
+  --color-grape-400: #67e8f9; --color-grape-500: #22b8e6;
+  --color-ink-950: #020815; --color-ink-900: #06142b; --color-ink-850: #0a1d3a; --color-ink-800: #0e2548;
+  --color-ink-700: #163566; --color-ink-600: #1f4585; --color-ink-500: #2e5ca8;
+  --color-ink-300: #a3bde3; --color-ink-200: #c9d8f1; --color-ink-100: #e9f1ff;
+}
+html[data-theme="hacker"] {
+  --color-hot-400: #34d06a; --color-hot-500: #16a34a; --color-hot-600: #15803d; --color-hot-700: #0b4d25;
+  --color-sky-400: #c4f06a; --color-sky-500: #a3e635; --color-sky-700: #5a8a0c;
+  --color-grape-400: #5eead4; --color-grape-500: #10b981;
+  --color-ink-950: #020803; --color-ink-900: #041008; --color-ink-850: #06170c; --color-ink-800: #0a1f11;
+  --color-ink-700: #10301a; --color-ink-600: #184226; --color-ink-500: #235935;
+  --color-ink-300: #a3d6b1; --color-ink-200: #cbeed4; --color-ink-100: #eafbee;
+}
+html[data-theme="vampire"] {
+  --color-hot-400: #fb7185; --color-hot-500: #e11d48; --color-hot-600: #be123c; --color-hot-700: #7f0d27;
+  --color-sky-400: #f5f5f5; --color-sky-500: #d4d4d8; --color-sky-700: #71717a;
+  --color-grape-400: #fda4af; --color-grape-500: #9f1239;
+  --color-ink-950: #0a0506; --color-ink-900: #130709; --color-ink-850: #1a0a0d; --color-ink-800: #220d12;
+  --color-ink-700: #34141b; --color-ink-600: #4b1c27; --color-ink-500: #672737;
+  --color-ink-300: #d9a7b1; --color-ink-200: #eecdd3; --color-ink-100: #fcf0f2;
+}
+html[data-theme="galaxy"] {
+  --color-hot-400: #a78bfa; --color-hot-500: #8b5cf6; --color-hot-600: #7c3aed; --color-hot-700: #4c1d95;
+  --color-sky-400: #f9a8d4; --color-sky-500: #f472b6; --color-sky-700: #9d174d;
+  --color-grape-400: #67e8f9; --color-grape-500: #22d3ee;
+  --color-ink-950: #03030f; --color-ink-900: #080822; --color-ink-850: #0d0d30; --color-ink-800: #13133f;
+  --color-ink-700: #1e1e5c; --color-ink-600: #2a2a7a; --color-ink-500: #3b3b9e;
+  --color-ink-300: #b3b3ea; --color-ink-200: #d5d5f6; --color-ink-100: #efefff;
+}
+
+@keyframes spin-slow { to { transform: rotate(360deg); } }
+@keyframes stamp-in {
+  0% { transform: scale(2.4) rotate(-12deg); opacity: 0; }
+  60% { transform: scale(0.92) rotate(-12deg); opacity: 1; }
+  100% { transform: scale(1) rotate(-12deg); opacity: 1; }
+}
+@layer components {
+  .rays {
+    background: repeating-conic-gradient(from 0deg, color-mix(in srgb, var(--color-sun-400) 22%, transparent) 0deg 10deg, transparent 10deg 20deg);
+    animation: spin-slow 14s linear infinite;
+    mask-image: radial-gradient(circle, black 20%, transparent 70%);
+  }
+  .stamp {
+    animation: stamp-in 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

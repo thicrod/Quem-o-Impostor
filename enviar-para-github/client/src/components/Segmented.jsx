@@ -17,6 +17,7 @@ export function Segmented({ label, options, value, onChange, disabled = false, n
             aria-checked={selected}
             disabled={optDisabled}
             title={opt.title}
+            aria-label={opt.ariaLabel}
             onClick={() => {
               if (selected) return;
               playSound('click');

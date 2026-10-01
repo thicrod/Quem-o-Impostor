@@ -8,7 +8,7 @@ import { formatClock } from '../lib/format.js';
 import { playSound } from '../lib/sound.js';
 import { cx } from './ui.jsx';
 
-export function TimerRing({ size = 64, tick = false, format = 'seconds', className, label = 'Tempo restante' }) {
+export function TimerRing({ size = 64, tick = false, format = 'seconds', className, label = 'Tempo restante', whenStopped = null }) {
   const countdown = useCountdown();
   const lastTick = useRef(null);
   const seconds = countdown?.seconds ?? 0;
@@ -22,7 +22,7 @@ export function TimerRing({ size = 64, tick = false, format = 'seconds', classNa
     playSound(seconds <= 5 ? 'tickUrgent' : 'tick');
   }, [tick, countdown, seconds]);
 
-  if (!countdown) return null;
+  if (!countdown) return whenStopped ? <StoppedRing size={size} text={whenStopped} className={className} /> : null;
   const stroke = 6;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
@@ -61,6 +61,20 @@ export function TimerRing({ size = 64, tick = false, format = 'seconds', classNa
       >
         {text}
       </motion.span>
+    </div>
+  );
+}
+
+/** Anel parado (ex.: "∞" na discussão sem limite de tempo). */
+function StoppedRing({ size, text, className }) {
+  return (
+    <div
+      className={cx('relative inline-grid shrink-0 place-items-center rounded-full border-[6px] border-sky-400/40 bg-ink-950/70', className)}
+      style={{ width: size, height: size }}
+      role="timer"
+      aria-label="Sem limite de tempo"
+    >
+      <span className="font-display leading-none text-sky-400" style={{ fontSize: size * 0.42 }} aria-hidden="true">{text}</span>
     </div>
   );
 }

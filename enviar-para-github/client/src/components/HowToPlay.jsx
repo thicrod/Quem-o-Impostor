@@ -5,8 +5,8 @@ import { cx } from './ui.jsx';
 const STEPS = [
   ['🃏', 'Veja sua carta', 'Todos recebem a palavra secreta — menos o impostor, que precisa blefar.'],
   ['💬', 'Dê uma pista', 'Na sua vez, mande UMA palavra relacionada. Nem óbvia demais, nem vaga demais!'],
-  ['🕵️', 'Discuta', 'Troquem ideias no chat e descubram quem parece não saber a palavra.'],
-  ['🗳️', 'Vote', 'Eliminem o suspeito. Se for o impostor, ele ainda pode roubar a vitória adivinhando a palavra.'],
+  ['🕵️', 'Converse', 'Falem na chamada (ou no chat do app) e descubram quem parece não saber a palavra.'],
+  ['🗳️', 'Vote ou pule', 'Eliminem o suspeito ou pulem: se ninguém sair, rola outra rodada. Se o impostor for pego, ainda pode roubar a vitória adivinhando a palavra.'],
 ];
 
 export function HowToPlay({ className, defaultOpen = false }) {

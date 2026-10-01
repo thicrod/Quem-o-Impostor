@@ -6,6 +6,10 @@ import { CODE_LENGTH, cleanCode, isValidCode } from '../lib/format.js';
 import { playSound } from '../lib/sound.js';
 import { Button, Chip, Panel, Spinner, cx } from '../components/ui.jsx';
 import { Logo, SoundToggle } from '../components/Shell.jsx';
+import { SettingsButton } from '../components/SettingsSheet.jsx';
+import { ServerWaking, useSecondsWhile } from '../components/ServerWaking.jsx';
+import { useInstall } from '../lib/install.js';
+import { setUi } from '../lib/uiStore.js';
 import { AvatarPicker } from '../components/AvatarPicker.jsx';
 import { HowToPlay } from '../components/HowToPlay.jsx';
 
@@ -46,6 +50,9 @@ export default function HomeScreen() {
   const avatars = state.meta?.avatars;
   const limits = state.meta?.limits || { nickMin: 2, nickMax: 16 };
   const online = state.connection === 'online';
+  // Ainda não conectou nenhuma vez: depois de alguns segundos explica que o servidor está acordando.
+  const waitingFirst = !online && !state.everConnected;
+  const waitingFor = useSecondsWhile(waitingFirst);
   // Sem avatar salvo? Sugere um aleatório (estável durante a visita).
   const avatar = avatars?.includes(pickedAvatar)
     ? pickedAvatar
@@ -107,8 +114,9 @@ export default function HomeScreen() {
 
   return (
     <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 safe-top safe-bottom">
-      <div className="flex justify-end pt-1">
+      <div className="flex justify-end gap-2 pt-1">
         <SoundToggle />
+        <SettingsButton />
       </div>
 
       <motion.div
@@ -134,7 +142,10 @@ export default function HomeScreen() {
         </div>
       </motion.div>
 
-      {!online && (
+      {waitingFirst && waitingFor >= 4 && (
+        <ServerWaking className="mt-5" seconds={waitingFor} offline={state.connection === 'offline'} onRetry={actions.reconnectNow} />
+      )}
+      {!online && !(waitingFirst && waitingFor >= 4) && (
         <div
           role="status"
           className={cx(
@@ -268,7 +279,28 @@ export default function HomeScreen() {
       </Panel>
 
       <HowToPlay className="mt-4" />
-      <p className="mt-auto pt-6 text-center text-xs text-ink-300">Feito para jogar com os amigos · sem cadastro</p>
+      <HomeFooter />
+    </div>
+  );
+}
+
+function HomeFooter() {
+  const inst = useInstall();
+  return (
+    <div className="mt-auto flex flex-col items-center gap-3 pt-6">
+      {inst.available && (
+        <button
+          type="button"
+          onClick={async () => {
+            const r = await inst.install();
+            if (r === 'manual') setUi({ settingsOpen: true, installHelpOpen: true });
+          }}
+          className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-400/40 bg-sky-400/10 px-4 text-sm font-extrabold text-sky-400 transition-colors hover:bg-sky-400/20"
+        >
+          <span aria-hidden="true">📲</span> Instalar como app
+        </button>
+      )}
+      <p className="text-center text-xs text-ink-300">Feito para jogar com os amigos · sem cadastro</p>
     </div>
   );
 }

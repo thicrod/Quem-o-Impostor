@@ -5,12 +5,12 @@
 //   npm run simulate
 //
 // Cobre: lobby, avatares, cartas, pistas (inclusive pista bloqueada),
-// chat, votação, empate, última chance, os 3 tipos de pontuação,
+// chat, votação, empate, "pular voto", última chance, os 3 tipos de pontuação,
 // reconexão no meio da partida, troca de host e "jogar novamente".
 
 import assert from 'node:assert/strict';
 import {
-  createRoomWith, everyone, finishDiscussion, playClueRound, roles, setTestEnv, sleep,
+  SKIP, createRoomWith, everyone, finishDiscussion, playClueRound, roles, setTestEnv, sleep,
   startAndReveal, startServer, vote,
 } from '../server/test/helpers.js';
 
@@ -106,16 +106,23 @@ async function playRound(bots, { label, plan, guess, reconnectDuring }) {
     voteRounds += 1;
     if (voteRounds > 1) {
       await host.waitFor((b) => b.state.phase === 'clues' && b.state.game.round === voteRounds, { timeout: 8000 });
-      log(`   ${c.yellow('⚡ EMPATE!')} Rodada ${voteRounds}/3: nova rodada de pistas`);
+      log(`   ${c.yellow('⏭️  Ninguém saiu!')} Rodada ${voteRounds}: nova rodada de pistas`);
       await playClueRound(bots);
       await finishDiscussion(bots);
     }
     await vote(bots, p);
     await host.waitPhase('voteReveal');
     const rec = host.state.game.voteHistory.at(-1);
-    const tally = Object.entries(rec.tallies).filter(([, n]) => n > 0)
-      .map(([id, n]) => `${bots.find((b) => b.id === id).nickname} ${n}`).join(', ');
-    log(`   🗳️  Votação ${voteRounds}: ${tally}${rec.tie ? c.yellow(' → empate') : ` → eliminado: ${bots.find((b) => b.id === rec.eliminatedId).nickname}`}`);
+    const tally = [
+      ...Object.entries(rec.tallies).filter(([, n]) => n > 0).map(([id, n]) => `${bots.find((b) => b.id === id).nickname} ${n}`),
+      ...(rec.skipCount ? [`pular ${rec.skipCount}`] : []),
+    ].join(', ');
+    const verdict = {
+      tie: c.yellow(' → empate, ninguém sai'),
+      skipped: c.yellow(' → pularam, ninguém sai'),
+      noVotes: c.yellow(' → sem votos, ninguém sai'),
+    }[rec.verdict] ?? ` → eliminado: ${bots.find((b) => b.id === rec.eliminatedId).nickname}`;
+    log(`   🗳️  Votação ${voteRounds}: ${tally}${verdict}`);
   }
 
   if (host.state.game.voteHistory.at(-1).eliminatedId === impostor.id) {
@@ -154,7 +161,9 @@ async function main() {
       assert.equal(host.state.players.length, 6);
       assert.equal(host.state.hostId, host.id);
     });
-    await host.request('settings:update', { category: 'comida', impostorMode: 'similar', clueSeconds: 30, discussionSeconds: 90 });
+    await host.request('settings:update', {
+      category: 'comida', impostorMode: 'similar', clueSeconds: 30, discussionSeconds: 90, discussionMode: 'chat',
+    });
 
     // Rodada 1: grupo acerta, impostor erra o palpite, com reconexão durante as pistas
     const r1 = await playRound(bots, {
@@ -168,11 +177,11 @@ async function main() {
       assert.equal(r1.result.pointsDelta[r1.impostor.id], 0);
     });
 
-    // Rodada 2: empate duas vezes, depois o impostor é pego mas acerta a palavra
+    // Rodada 2: empate, depois todo mundo pula, depois o impostor é pego mas acerta a palavra
     await host.request('game:playAgain');
     await host.waitFor((b) => b.state.game?.number === 2);
     const r2 = await playRound(bots, {
-      label: 'Rodada 2 — empates e impostor roubando a vitória',
+      label: 'Rodada 2 — empate, "pular" e impostor roubando a vitória',
       plan: ({ impostor }) => {
         const [a, b] = bots.filter((x) => x !== impostor);
         const rest = bots.filter((x) => x !== a && x !== b);
@@ -184,12 +193,19 @@ async function main() {
           [rest[2].nickname]: b.nickname,
           [rest[3].nickname]: b.nickname,
         };
-        return [tie, tie, everyoneVotes(bots, impostor)];
+        const skipAll = Object.fromEntries(bots.map((x) => [x.nickname, SKIP]));
+        return [tie, skipAll, everyoneVotes(bots, impostor)];
       },
       guess: 'correct',
       reconnectDuring: 'discussion',
     });
-    check('empate gerou novas rodadas (3 votações)', () => assert.equal(host.state.game.voteHistory.length, 3));
+    check('empate e "pular" não eliminaram ninguém e geraram novas rodadas (3 votações)', () => {
+      const [first, second] = host.state.game.voteHistory;
+      assert.equal(host.state.game.voteHistory.length, 3);
+      assert.equal(first.verdict, 'tie');
+      assert.equal(second.verdict, 'skipped');
+      assert.equal(second.skipCount, 6);
+    });
     check('+2 para o impostor que adivinhou, 0 para o grupo', () => {
       assert.equal(r2.result.outcome, 'stolen');
       assert.equal(r2.result.pointsDelta[r2.impostor.id], 2);

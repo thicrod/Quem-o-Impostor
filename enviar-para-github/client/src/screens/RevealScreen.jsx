@@ -6,6 +6,7 @@ import { Button, Chip, cx } from '../components/ui.jsx';
 import { TimerBar } from '../components/Timer.jsx';
 import { DoneRow } from '../components/SeenProgress.jsx';
 import { Logo, SpectatorBanner } from '../components/Shell.jsx';
+import { ImpostorHint } from '../components/ImpostorHint.jsx';
 
 function CardFace({ card, category }) {
   const impostor = card.role === 'impostor';
@@ -18,6 +19,8 @@ function CardFace({ card, category }) {
           : 'border-good-400 bg-[radial-gradient(circle_at_50%_20%,#0f3d33,#0b1a26_70%)] shadow-glow-good',
       )}
       style={{ transform: 'rotateY(180deg)' }}
+      data-testid="card-face"
+      data-role={card.role}
     >
       <span className="text-5xl" aria-hidden="true">{impostor ? '🔴' : '🟢'}</span>
       <p className={cx('font-display text-4xl tracking-wide', impostor ? 'text-bad-400' : 'text-good-400')}>
@@ -25,16 +28,13 @@ function CardFace({ card, category }) {
       </p>
       {impostor ? (
         <>
-          <p className="font-display text-2xl text-white">VOCÊ É O IMPOSTOR</p>
-          {card.word ? (
-            <div className="mt-1 rounded-2xl bg-white/8 px-4 py-3">
+          {card.word && (
+            <div className="rounded-2xl bg-white/8 px-4 py-2.5">
               <p className="text-xs font-extrabold tracking-widest text-ink-300 uppercase">Sua palavra</p>
               <p className="font-display text-3xl break-words text-white">{card.word}</p>
-              <p className="mt-1 text-xs text-ink-200">Os outros têm uma palavra parecida. Disfarce!</p>
             </div>
-          ) : (
-            <p className="text-sm text-ink-200">Você não sabe a palavra. Preste atenção nas pistas e blefe!</p>
           )}
+          <ImpostorHint card={card} />
         </>
       ) : (
         <>
@@ -83,7 +83,7 @@ export default function RevealScreen() {
         <p className="text-xs font-extrabold tracking-[0.25em] text-sky-400 uppercase">Rodada {game.number}</p>
         <h1 className="font-display text-4xl text-white text-outline">SUA CARTA</h1>
         <p className="mt-1 text-sm text-ink-200">
-          {game.randomCategory ? '🎲 Categoria sorteada: ' : 'Categoria: '}
+          {game.categoryHidden ? 'Categoria: ' : game.randomCategory ? '🎲 Categoria sorteada: ' : 'Categoria: '}
           <strong className="text-white">{game.category.emoji} {game.category.label}</strong>
         </p>
         <TimerBar className="mx-auto mt-3 max-w-xs" />
@@ -106,7 +106,7 @@ export default function RevealScreen() {
             whileTap={{ scale: 0.97 }}
           >
             {/* Verso (fechada) */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 overflow-hidden rounded-[2rem] border-4 border-hot-400/80 bg-[radial-gradient(circle_at_30%_20%,#3b1d7a,#150d3b_65%)] shadow-glow-hot backface-hidden">
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 overflow-hidden rounded-[2rem] border-4 border-hot-400/80 bg-[radial-gradient(circle_at_30%_20%,var(--color-ink-600),var(--color-ink-850)_65%)] shadow-glow-hot backface-hidden">
               <div
                 className="absolute inset-0 opacity-20"
                 style={{ backgroundImage: 'repeating-linear-gradient(45deg, #fff 0 2px, transparent 2px 18px)' }}

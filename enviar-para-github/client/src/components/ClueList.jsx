@@ -1,29 +1,42 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { Avatar, cx } from './ui.jsx';
 
-/** Pistas agrupadas por rodada, em ordem de envio. */
+const passOf = (c) => c.pass ?? c.round;
+
+/** Pistas agrupadas por volta (e rodada de votação), a mais recente primeiro. */
 export function ClueList({ game, playerInfo, meId, emptyText = 'As pistas aparecem aqui.', highlightIds = [] }) {
-  const rounds = [...new Set(game.clues.map((c) => c.round))].sort((a, b) => b - a);
+  const passes = [...new Set(game.clues.map(passOf))].sort((a, b) => b - a);
+  const multiRound = new Set(game.clues.map((c) => c.round)).size > 1;
+  const multiPass = (game.clueRounds ?? 1) > 1;
+  // Número da volta dentro da rodada de votação (1ª, 2ª…)
+  const passLabel = (pass) => {
+    const round = game.clues.find((c) => passOf(c) === pass)?.round ?? 1;
+    const inRound = [...new Set(game.clues.filter((c) => passOf(c) === pass).map(passOf))].sort((a, b) => a - b);
+    const parts = [];
+    if (multiRound) parts.push(`Rodada ${round}`);
+    if (multiPass) parts.push(`${inRound.indexOf(pass) + 1}ª volta`);
+    return parts.join(' · ');
+  };
   if (game.clues.length === 0) {
     return <p className="rounded-2xl border-2 border-dashed border-white/10 px-4 py-6 text-center text-sm font-bold text-ink-300">{emptyText}</p>;
   }
   const highlight = new Set(highlightIds);
   return (
     <div className="grid gap-4">
-      {rounds.map((round) => (
-        <section key={round} aria-label={`Pistas da rodada ${round}`}>
-          {rounds.length > 1 && (
-            <h3 className="mb-2 text-xs font-extrabold tracking-[0.2em] text-ink-300 uppercase">Rodada {round}</h3>
+      {passes.map((pass) => (
+        <section key={pass} aria-label={passLabel(pass) ? `Pistas: ${passLabel(pass)}` : 'Pistas'}>
+          {passes.length > 1 && (
+            <h3 className="mb-2 text-xs font-extrabold tracking-[0.2em] text-ink-300 uppercase">{passLabel(pass)}</h3>
           )}
           <ol className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <AnimatePresence initial={false}>
               {game.clues
-                .filter((c) => c.round === round)
+                .filter((c) => passOf(c) === pass)
                 .map((c) => {
                   const p = playerInfo(c.playerId);
                   return (
                     <motion.li
-                      key={`${c.round}-${c.playerId}`}
+                      key={`${passOf(c)}-${c.playerId}`}
                       layout
                       initial={{ opacity: 0, scale: 0.7, y: -12 }}
                       animate={{ opacity: 1, scale: 1, y: 0 }}

@@ -9,7 +9,7 @@ process.env.LOG_LEVEL = 'silent';
 const REQUIRED = [
   'comida', 'animais', 'futebol', 'filmes', 'objetos', 'lugares', 'geral',
   'profissoes', 'tecnologia', 'jogos', 'musica', 'marcas', 'paises', 'esportes',
-  'escola', 'internet', 'culturaPop',
+  'escola', 'internet', 'culturaPop', 'veiculos', 'roupas', 'natureza', 'brasil', 'casa', 'fantasia',
 ];
 
 test('words.json é válido e tem todas as categorias com 50+ palavras', () => {
@@ -60,6 +60,6 @@ test('sorteio evita repetir palavras e categoria aleatória escolhe uma categori
 
 test('lista pública nunca contém as palavras', () => {
   const list = wordBank.publicList();
-  assert.ok(list.length >= 17);
+  assert.ok(list.length >= 23);
   for (const c of list) assert.deepEqual(Object.keys(c).sort(), ['count', 'emoji', 'key', 'label']);
 });

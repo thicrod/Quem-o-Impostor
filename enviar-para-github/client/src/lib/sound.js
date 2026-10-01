@@ -3,11 +3,23 @@
 // então o navegador nunca bloqueia nem mostra avisos de autoplay.
 
 import { KEYS, local } from './storage.js';
+import { getPrefs } from './prefs.js';
 
 let ctx = null;
 let master = null;
 let enabled = local.get(KEYS.sound, true) !== false;
 const listeners = new Set();
+
+const unlockListeners = new Set();
+
+/** AudioContext compartilhado (efeitos + música). null até o primeiro toque. */
+export const getAudioContext = () => ctx;
+
+/** Avisa quando o áudio foi liberado pelo primeiro toque do usuário. */
+export function onAudioUnlock(fn) {
+  unlockListeners.add(fn);
+  return () => unlockListeners.delete(fn);
+}
 
 function unlock() {
   if (ctx) {
@@ -21,6 +33,7 @@ function unlock() {
     master = ctx.createGain();
     master.gain.value = 0.35;
     master.connect(ctx.destination);
+    unlockListeners.forEach((fn) => fn(ctx));
   } catch {
     ctx = null;
   }
@@ -96,6 +109,7 @@ const SOUNDS = {
   win: () => notes([[523, 0], [659, 0.12], [784, 0.24], [1047, 0.36, 0.45]], { type: 'triangle', gain: 0.35 }),
   lose: () => notes([[392, 0, 0.2], [349, 0.2, 0.2], [311, 0.4, 0.2], [262, 0.6, 0.5]], { type: 'sawtooth', gain: 0.16 }),
   error: () => tone(200, { dur: 0.18, type: 'square', gain: 0.18 }),
+  pop: () => tone(700, { dur: 0.07, type: 'sine', gain: 0.12, slide: 1300 }),
 };
 
 export function playSound(name) {
@@ -122,6 +136,7 @@ export function onSoundChange(fn) {
 }
 
 export function vibrate(pattern) {
+  if (!getPrefs().vibration) return;
   try {
     navigator.vibrate?.(pattern);
   } catch {

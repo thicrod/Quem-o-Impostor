@@ -37,6 +37,10 @@ const FATAL = {
     icon: '📱', title: 'Jogo aberto em outro lugar',
     message: 'Sua sessão foi aberta em outra aba ou dispositivo.',
   },
+  KICKED: {
+    icon: '🚫', title: 'Você foi removido',
+    message: 'O host removeu você desta sala. Você pode criar outra sala ou entrar em uma diferente.',
+  },
   shutdown: {
     icon: '🔧', title: 'Servidor reiniciado',
     message: 'O servidor foi reiniciado e as salas foram encerradas. Crie uma nova sala.',
@@ -165,6 +169,10 @@ export function GameProvider({ children }) {
         showFatal(reason === 'expired' ? 'ROOM_EXPIRED' : reason, message);
       },
       'session:replaced': () => showFatal('REPLACED'),
+      'room:kicked': () => {
+        if (clientIdRef.current) roomStore.clear(clientIdRef.current);
+        showFatal('KICKED');
+      },
     };
     Object.entries(handlers).forEach(([ev, fn]) => socket.on(ev, fn));
     const onReconnectFailed = () => dispatch({ type: 'connection', value: 'offline' });
@@ -223,7 +231,12 @@ export function GameProvider({ children }) {
       submitClue: (text) => simple('clue:submit')({ text }),
       sendChat: (text) => simple('chat:send')({ text }),
       toggleReady: () => simple('discussion:ready')(),
+      startVotingNow: () => simple('discussion:startVoting')(),
       castVote: (targetId) => simple('vote:cast')({ targetId }),
+      skipVote: () => simple('vote:skip')(),
+      endRound: () => simple('game:end')(),
+      kickPlayer: (targetId) => simple('player:kick')({ targetId }),
+      makeHost: (targetId) => simple('host:transfer')({ targetId }),
       submitGuess: (text) => simple('guess:submit')({ text }),
       playAgain: () => simple('game:playAgain')(),
       toLobby: () => simple('game:toLobby')(),
